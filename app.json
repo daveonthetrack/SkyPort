@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "Adera",
+    "slug": "skyport",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/your-project-id"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.adera.app",
+      "buildNumber": "1.0.0"
+    },
+    "android": {
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.adera.app",
+      "versionCode": 1
+    },
+    "plugins": [
+      "expo-asset",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow Adera to access your microphone for voice messages"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ],
+      "expo-router"
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "da987c34-5103-47ea-8528-bef79edb67d7"
+      }
+    },
+    "owner": "dawithagos"
+  }
+}
