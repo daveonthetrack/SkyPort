@@ -1,0 +1,112 @@
+# Adera – Context for Cursor.ai
+
+## Overview
+Adera is a web and mobile app that connects **Senders** with **Travelers** for peer-to-peer delivery of items, especially between countries like the U.S. and Ethiopia. Instead of using carriers like FedEx or DHL, users can find trusted travelers heading to their item’s destination.
+
+## Goal
+Build a lightweight, modern platform using **Supabase** as the backend and **React Native** for cross-platform development.
+
+---
+
+## App Roles
+
+- **Sender**: Posts items they want to send
+- **Traveler**: Posts travel details with available carrying space
+
+---
+
+## Core Features
+
+### 1. Authentication
+- Email & password or magic link (Supabase auth)
+
+### 2. User Profiles
+- Name, role (Sender/Traveler), photo, phone number
+- Rating system
+- Verified badge (optional future feature)
+
+### 3. Post Item (Sender)
+- Item name + description
+- Size & weight
+- Pickup & destination
+- Photo upload
+- Date range for delivery
+
+### 4. Post Trip (Traveler)
+- Origin → Destination
+- Departure date
+- Return date (optional)
+- Available carrying capacity (small/medium/large)
+
+### 5. Matching System
+- Search Travelers by destination and date
+- Match Senders and Travelers based on:
+  - Location
+  - Date proximity
+  - Carrying space
+
+### 6. In-app Messaging
+- Real-time chat using Supabase Realtime
+- Optional: file/photo sharing
+
+### 7. Trip / Item Status
+- Request Sent / Accepted / In Progress / Completed
+- Sender or Traveler can mark completion
+
+---
+
+## Supabase Database Tables (Basic)
+
+### users
+- id (UUID)
+- name
+- email
+- role (sender/traveler)
+- avatar_url
+- rating
+
+### items
+- id
+- user_id (FK)
+- title
+- description
+- pickup_location
+- destination
+- size
+- image_url
+- delivery_window_start
+- delivery_window_end
+- status (pending/accepted/delivered)
+
+### trips
+- id
+- user_id (FK)
+- origin
+- destination
+- departure_date
+- return_date
+- capacity
+- status
+
+### messages
+- id
+- sender_id
+- receiver_id
+- content
+- timestamp
+
+### matches
+- id
+- item_id (FK)
+- trip_id (FK)
+- status (requested/accepted/completed)
+
+---
+
+## Tagline
+**Adera** – *Handed by Trust*
+
+## Style
+- Modern, minimal UI
+- Mobile-first layout
+- Ethiopian cultural essence but globally accessible

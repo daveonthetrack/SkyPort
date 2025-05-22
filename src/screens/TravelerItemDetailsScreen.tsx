@@ -1,27 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  Image,
-  SafeAreaView,
-  ActivityIndicator,
-  Share,
-  Platform,
-  Dimensions,
-} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, borderRadius, shadows, typography } from '../theme';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    SafeAreaView,
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { borderRadius, colors, shadows, spacing, typography } from '../theme';
 
 const { width } = Dimensions.get('window');
 
@@ -254,6 +253,8 @@ export default function TravelerItemDetailsScreen() {
             />
             <LinearGradient
               colors={['transparent', 'rgba(0,0,0,0.7)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
               style={styles.imageGradient}
             />
             <View style={styles.imageOverlay}>

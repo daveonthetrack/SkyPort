@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Adera",
+    "name": "SkyPort",
     "slug": "skyport",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,30 +13,29 @@
     },
     "updates": {
       "fallbackToCacheTimeout": 0,
-      "url": "https://u.expo.dev/your-project-id"
+      "url": "https://u.expo.dev/da987c34-5103-47ea-8528-bef79edb67d7"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.adera.app",
-      "buildNumber": "1.0.0"
-    },
-    "android": {
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
-      ],
-      "package": "com.adera.app",
-      "versionCode": 1
+      "bundleIdentifier": "com.skyport.app",
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow SkyPort to access your camera to take photos for items and profile pictures",
+        "NSPhotoLibraryUsageDescription": "Allow SkyPort to access your photos to select images for items and profile pictures",
+        "NSMicrophoneUsageDescription": "Allow SkyPort to access your microphone for voice messages",
+        "NSLocationWhenInUseUsageDescription": "Allow SkyPort to access your location to find nearby items and travelers",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "plugins": [
       "expo-asset",
       [
         "expo-av",
         {
-          "microphonePermission": "Allow Adera to access your microphone for voice messages"
+          "microphonePermission": "Allow SkyPort to access your microphone for voice messages"
         }
       ],
       [
@@ -46,16 +45,36 @@
           "color": "#ffffff"
         }
       ],
-      "expo-router"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow SkyPort to access your photos to select images for items and profile pictures",
+          "cameraPermission": "Allow SkyPort to access your camera to take photos for items and profile pictures"
+        }
+      ]
     ],
+    "android": {
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ],
+      "package": "com.skyport.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+    }
+    },
     "extra": {
-      "router": {
-        "origin": false
-      },
       "eas": {
         "projectId": "da987c34-5103-47ea-8528-bef79edb67d7"
       }
     },
-    "owner": "dawithagos"
+    "newArchEnabled": true
   }
 }

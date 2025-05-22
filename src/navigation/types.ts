@@ -1,6 +1,6 @@
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import { Item, Trip, Profile } from '../types/models';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Item, Profile, Trip } from '../types/models';
 
 export type RootStackParamList = {
   SignIn: undefined;
@@ -19,6 +19,18 @@ export type RootStackParamList = {
   Chat: ChatScreenParams;
   ChatList: undefined;
   NewChat: undefined;
+  FindTravelers: {
+    itemId?: number;
+    origin?: string;
+    destination?: string;
+  };
+  MyTrips: undefined;
+  PostTrip: undefined;
+  FindItems: {
+    tripId?: number;
+    origin?: string;
+    destination?: string;
+  };
 };
 
 export type TabParamList = {

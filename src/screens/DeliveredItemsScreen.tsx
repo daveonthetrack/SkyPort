@@ -1,30 +1,29 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Image,
-  ActivityIndicator,
-  RefreshControl,
-  Dimensions,
-} from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
-import { colors, typography, spacing, shadows } from '../theme';
-import { Item } from '../types/item';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { format } from 'date-fns';
-import Animated, { 
-  FadeInDown, 
-  FadeInUp,
-  Layout,
-  SlideInRight,
-} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import React, { useState } from 'react';
+import {
+    ActivityIndicator,
+    Dimensions,
+    FlatList,
+    Image,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import Animated, {
+    FadeInUp,
+    Layout,
+    SlideInRight
+} from 'react-native-reanimated';
+import { supabase } from '../lib/supabase';
 import { HomeStackParamList } from '../navigation/types';
+import { colors, shadows, spacing, typography } from '../theme';
+import { Item } from '../types/item';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width - spacing.md * 2;
@@ -107,6 +106,8 @@ export default function DeliveredItemsScreen() {
       <View style={styles.statsCard}>
         <LinearGradient
           colors={[colors.primary, colors.secondary]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={styles.statsGradient}
         >
           <View style={styles.statItem}>

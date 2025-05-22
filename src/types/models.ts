@@ -46,10 +46,12 @@ export type Trip = {
   departure_date: string;
   created_at: string;
   updated_at: string;
+  capacity: 'small' | 'medium' | 'large';
   user?: {
     id: string;
     name: string;
     avatar_url?: string;
     rating?: number;
+    delivery_count?: number;
   };
 }; 

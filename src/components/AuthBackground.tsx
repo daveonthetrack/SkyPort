@@ -1,13 +1,13 @@
-import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { 
-  useAnimatedStyle, 
-  withRepeat, 
-  withTiming, 
-  useSharedValue, 
-  withSequence,
-  withDelay
+import React from 'react';
+import { Dimensions, StyleSheet, View } from 'react-native';
+import Animated, {
+    useAnimatedStyle,
+    useSharedValue,
+    withDelay,
+    withRepeat,
+    withSequence,
+    withTiming
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { colors } from '../theme';
@@ -53,6 +53,8 @@ const AuthBackground: React.FC<{ children: React.ReactNode }> = ({ children }) =
     <View style={styles.container}>
       <LinearGradient
         colors={[colors.auth.gradientStart, colors.auth.gradientEnd]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={styles.gradient}
       >
         <View style={styles.content}>{children}</View>

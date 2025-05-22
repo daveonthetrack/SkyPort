@@ -1,26 +1,24 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
-  Alert, 
-  RefreshControl,
-  ActivityIndicator,
-  Image,
-  Modal,
-  ScrollView
-} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import { differenceInDays, isBefore } from 'date-fns';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Modal,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { colors, shadows, spacing, borderRadius } from '../theme';
-import { RootStackParamList } from '../navigation';
-import TripTimeline from '../components/TripTimeline';
-import { format, differenceInDays, isBefore } from 'date-fns';
+import { RootStackParamList } from '../navigation/types';
+import { borderRadius, colors, shadows, spacing } from '../theme';
 
 type Trip = {
   id: string;
@@ -167,7 +165,7 @@ export const MyTripsScreen = () => {
     navigation.navigate('FindItems', { 
       origin: trip.origin,
       destination: trip.destination,
-      tripId: trip.id
+      tripId: parseInt(trip.id)
     });
   };
 

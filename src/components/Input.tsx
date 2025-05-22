@@ -1,14 +1,14 @@
 import React, { ReactNode } from 'react';
 import {
-  View,
-  TextInput,
-  Text,
-  StyleSheet,
-  ViewStyle,
-  TextStyle,
-  TextInputProps,
+    StyleSheet,
+    Text,
+    TextInput,
+    TextInputProps,
+    TextStyle,
+    View,
+    ViewStyle,
 } from 'react-native';
-import { colors, typography, borderRadius, spacing } from '../theme';
+import { borderRadius, colors, spacing, typography } from '../theme';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -46,8 +46,8 @@ export const Input = ({
         <TextInput
           style={[
             styles.input,
-            leftIcon && styles.inputWithIcon,
-            error && styles.inputError,
+            leftIcon ? styles.inputWithIcon : null,
+            error ? styles.inputError : null,
             inputStyle,
           ]}
           placeholderTextColor={colors.text.light}

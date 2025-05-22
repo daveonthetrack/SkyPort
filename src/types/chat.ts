@@ -46,11 +46,15 @@ export interface Message {
   reply_to?: string;
   metadata?: MessageMetadata;
   reactions?: Record<string, number>;
+  item_id?: string;
+  trip_id?: string;
+  sender: Sender;
+  receiver: Sender;
 }
 
 export interface Conversation {
   id: string;
-  last_message: Message;
+  last_message: Message | null;
   other_user: Sender;
   unread_count: number;
   updated_at: string;

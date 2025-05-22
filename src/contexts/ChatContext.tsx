@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { chatService } from '../services/chatService';
-import { Conversation, ChatContextType } from '../types/chat';
+import { ChatContextType, Conversation } from '../types/chat';
 import { useAuth } from './AuthContext';
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -16,9 +16,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     try {
       setLoadingConversations(true);
-      const conversations = await chatService.fetchConversations({ 
-        userId: session.user.id 
-      });
+      const conversations = await chatService.fetchConversations(session.user.id);
       setConversations(conversations);
     } catch (error) {
       console.error('Error fetching conversations:', error);

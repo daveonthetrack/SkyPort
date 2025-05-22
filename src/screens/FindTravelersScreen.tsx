@@ -1,34 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/index';
-import { Ionicons } from '@expo/vector-icons';
-import { colors, typography, spacing, borderRadius, shadows } from '../theme';
-import Animated, { 
-  FadeInUp, 
-  FadeInDown,
-  withSpring,
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withDelay
+import { format } from 'date-fns';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import Animated, {
+    FadeInUp
 } from 'react-native-reanimated';
-import { format, formatDistanceToNow } from 'date-fns';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { RootStackParamList } from '../navigation/types';
+import { borderRadius, colors, shadows, spacing, typography } from '../theme';
 
 type Traveler = {
   id: string;
@@ -177,6 +171,7 @@ export const FindTravelersScreen = () => {
       navigation.navigate('Chat', {
         otherUserId: traveler.user_id,
         otherUserName: traveler.profile.name,
+        otherUserAvatar: traveler.profile.avatar_url,
         tripId: traveler.id
       });
 

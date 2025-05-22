@@ -1,39 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
-  Dimensions,
-  Alert,
-  ActivityIndicator,
-  Image,
-} from 'react-native';
-import { CompositeNavigationProp, useNavigation, RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { CompositeNavigationProp, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { format, formatDistanceToNow } from 'date-fns';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import Animated, {
-  FadeInUp,
-  FadeInDown,
-  withSpring,
-  useAnimatedStyle,
-  useSharedValue,
-  Layout,
-  withSequence,
-  withDelay,
-  withTiming,
-  Easing
+    Easing,
+    FadeInUp,
+    Layout,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+    withTiming
 } from 'react-native-reanimated';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { HomeStackParamList, TabParamList, MessagesStackParamList } from '../navigation/types';
-import { colors, typography, spacing, borderRadius, shadows } from '../theme';
-import { formatDistanceToNow, format } from 'date-fns';
-import { RealtimeChannel } from '@supabase/supabase-js';
+import { HomeStackParamList, TabParamList } from '../navigation/types';
+import { borderRadius, colors, shadows, spacing, typography } from '../theme';
+import { Trip } from '../types/models';
 
 type SenderDashboardNavigationProp = CompositeNavigationProp<
   NativeStackNavigationProp<HomeStackParamList, 'Dashboard'>,
@@ -273,7 +270,7 @@ const SenderDashboard = ({ navigation, route }: Props) => {
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [pendingItems, setPendingItems] = useState(0);
   const [recentItems, setRecentItems] = useState(0);
-  const [trips, setTrips] = useState([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
 
   useEffect(() => {
     if (!session?.user?.id) return;
@@ -493,7 +490,7 @@ const SenderDashboard = ({ navigation, route }: Props) => {
       })) || [];
 
       console.log(`Fetched ${validTrips.length} trips`);
-      setTrips(validTrips);
+      setTrips(validTrips as Trip[]);
     } catch (error) {
       console.error('Error fetching trips:', error);
     }
@@ -614,6 +611,8 @@ const SenderDashboard = ({ navigation, route }: Props) => {
     >
       <LinearGradient
         colors={[colors.primary, colors.secondary]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={styles.header}
       >
         <View style={styles.headerTop}>
@@ -707,7 +706,7 @@ const SenderDashboard = ({ navigation, route }: Props) => {
           <QuickActionButton
             icon="airplane-outline"
             label="Find Travelers"
-            onPress={() => navigation.navigate('FindTravelers', {})}
+            onPress={() => navigation.navigate('FindTravelers' as never)}
           />
           <QuickActionButton
             icon="chatbubbles-outline"
@@ -719,7 +718,7 @@ const SenderDashboard = ({ navigation, route }: Props) => {
         <View style={styles.feedSection}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Available Travelers</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('FindTravelers')}>
+            <TouchableOpacity onPress={() => navigation.navigate('FindTravelers' as never)}>
               <Text style={styles.seeAllText}>See All</Text>
             </TouchableOpacity>
           </View>

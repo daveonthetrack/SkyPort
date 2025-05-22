@@ -1,22 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  Platform,
-  Image,
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { MessagesStackParamList } from '../navigation/types';
-import { supabase } from '../lib/supabase';
-import { colors, typography, spacing } from '../theme';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    FlatList,
+    Image,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { MessagesStackParamList } from '../navigation/types';
+import { colors, spacing } from '../theme';
 
 type NewChatScreenNavigationProp = NativeStackNavigationProp<MessagesStackParamList, 'NewChat'>;
 
@@ -44,9 +44,6 @@ const NewChatScreen = () => {
       },
       headerStyle: {
         backgroundColor: '#ffffff',
-        elevation: 0,
-        shadowOpacity: 0,
-        borderBottomWidth: 0,
       },
     });
   }, [navigation]);

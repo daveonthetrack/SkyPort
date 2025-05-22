@@ -1,41 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
-  Dimensions,
-  Alert,
-  ActivityIndicator,
-  Image,
-  Modal,
-} from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { 
-  FadeInUp, 
-  FadeInDown,
-  withSpring,
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withDelay,
-  Layout
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { CompositeNavigationProp, RouteProp, useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { formatDistanceToNow } from 'date-fns';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import Animated, {
+    FadeInDown,
+    FadeInUp,
+    Layout,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring
 } from 'react-native-reanimated';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { HomeStackParamList, HomeStackScreenProps, TabParamList, MessagesStackParamList } from '../navigation/types';
-import { colors, typography, spacing, borderRadius, shadows } from '../theme';
-import { format, formatDistanceToNow } from 'date-fns';
-import { RealtimeChannel } from '@supabase/supabase-js';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { Trip, Item } from '../types/models';
-import { CompositeNavigationProp, RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { HomeStackParamList, TabParamList } from '../navigation/types';
+import { borderRadius, colors, shadows, spacing, typography } from '../theme';
+import { Item } from '../types/models';
 
 type Props = {
   navigation: CompositeNavigationProp<
@@ -588,6 +583,8 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
     >
       <LinearGradient
         colors={[colors.primary, colors.secondary]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={styles.header}
       >
         <View style={styles.headerTop}>

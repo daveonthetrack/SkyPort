@@ -1,39 +1,35 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  ActivityIndicator,
-  Image,
-  SafeAreaView,
-  RefreshControl,
-  Alert,
-  TouchableOpacity,
-  ScrollView,
-  Dimensions,
-  Modal,
-  Platform,
-} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { HomeStackParamList, TabParamList, MessagesStackParamList } from '../navigation/types';
+import { subDays, subMonths } from 'date-fns';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    FlatList,
+    Image,
+    Modal,
+    Platform,
+    RefreshControl,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import Animated, {
+    interpolateColor,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring
+} from 'react-native-reanimated';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Button } from '../components/Button';
-import { Input } from '../components/Input';
-import { colors, typography, spacing, borderRadius, shadows } from '../theme';
-import { Ionicons } from '@expo/vector-icons';
-import { formatDistanceToNow, subDays, subMonths } from 'date-fns';
-import Animated, { 
-  FadeInDown,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  useSharedValue,
-  interpolateColor
-} from 'react-native-reanimated';
+import { HomeStackParamList, TabParamList } from '../navigation/types';
+import { colors } from '../theme';
 
 const { width } = Dimensions.get('window');
 const numColumns = 2;
@@ -658,14 +654,15 @@ export default function FindItemsScreen() {
                 item: {
                   id: item.id,
                   title: item.title,
+                  description: item.description,
                   pickup_location: item.pickup_location,
                   destination: item.destination,
                   size: item.size,
                   image_url: item.image_url,
                   user_id: item.user_id,
                   status: 'accepted',
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString()
+                  created_at: item.created_at,
+                  sender: item.sender
                 }
               });
             } catch (err: any) {
@@ -710,6 +707,7 @@ export default function FindItemsScreen() {
         item: {
           id: item.id,
           title: item.title,
+          description: item.description,
           pickup_location: item.pickup_location,
           destination: item.destination,
           size: item.size,
@@ -717,7 +715,7 @@ export default function FindItemsScreen() {
           user_id: item.user_id,
           status: item.status,
           created_at: item.created_at,
-          updated_at: new Date().toISOString()
+          sender: item.sender
         }
       })}
     >

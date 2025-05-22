@@ -1,15 +1,12 @@
 import { supabase } from '../lib/supabase';
 import {
-  Message,
-  Conversation,
-  SendMessageParams,
-  FetchMessagesParams,
-  FetchConversationsParams,
-  MessageType,
-  MessageStatus,
-  Sender,
+    Conversation,
+    FetchMessagesParams,
+    Message,
+    MessageStatus,
+    MessageType,
+    SendMessageParams
 } from '../types/chat';
-import { Profile } from '../types/models';
 
 class ChatService {
   private static instance: ChatService;
@@ -86,6 +83,10 @@ class ChatService {
         image_url: message.image_url,
         type: message.type as MessageType,
         read_at: message.read_at,
+        updated_at: message.updated_at || message.created_at,
+        deleted_at: null,
+        edited_at: null,
+        status: message.status || MessageStatus.SENT,
         sender: {
           id: message.sender.id,
           name: message.sender.name,
@@ -156,10 +157,19 @@ class ChatService {
         image_url: data.image_url,
         type: data.type as MessageType,
         read_at: data.read_at,
+        updated_at: data.updated_at || data.created_at,
+        deleted_at: null,
+        edited_at: null,
+        status: data.status || MessageStatus.SENT,
         sender: {
           id: data.sender.id,
           name: data.sender.name,
           avatar_url: data.sender.avatar_url
+        },
+        receiver: {
+          id: data.receiver.id,
+          name: data.receiver.name,
+          avatar_url: data.receiver.avatar_url
         }
       };
     } catch (error) {
@@ -196,18 +206,27 @@ class ChatService {
         const otherUser = conv.user1_id === userId ? conv.other_user2 : conv.other_user;
         return {
           id: conv.id,
-          last_message: {
-            id: conv.last_message?.id || '',
-            content: conv.last_message?.content || '',
-            created_at: conv.last_message_at || '',
-            sender_id: conv.last_message?.sender_id || '',
-            receiver_id: conv.last_message?.receiver_id || '',
-            type: conv.last_message?.type || MessageType.TEXT,
-            sender: conv.last_message?.sender || null,
-            status: conv.last_message?.status || MessageStatus.SENT
-          },
+          last_message: conv.last_message ? {
+            id: conv.last_message.id,
+            content: conv.last_message.content,
+            created_at: conv.last_message.created_at,
+            sender_id: conv.last_message.sender_id,
+            receiver_id: conv.last_message.receiver_id,
+            type: conv.last_message.type,
+            status: conv.last_message.status || MessageStatus.SENT,
+            read_at: conv.last_message.read_at,
+            updated_at: conv.last_message.updated_at || conv.last_message.created_at,
+            deleted_at: null,
+            edited_at: null,
+            sender: conv.last_message.sender,
+            receiver: {
+              id: otherUser.id,
+              name: otherUser.name,
+              avatar_url: otherUser.avatar_url
+            }
+          } : null,
           other_user: {
-            id: otherUserId,
+            id: otherUser.id,
             name: otherUser.name,
             avatar_url: otherUser.avatar_url
           },
