@@ -8,10 +8,11 @@ import SignUpScreen from './src/screens/SignUpScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import ProfileSetupScreen from './src/screens/ProfileSetupScreen';
+import PhoneVerificationScreen from './src/screens/PhoneVerificationScreen';
 import { TabNavigator } from './src/navigation/TabNavigator';
 import { RootStackParamList } from './src/navigation/types';
 import { registerRootComponent } from 'expo';
-import * as ExpoAsset from 'expo-asset';
+// import * as ExpoAsset from 'expo-asset'; // Removed as Asset.loadAsync([]) was redundant
 import { View, Text } from 'react-native';
 import { testSupabaseConnection } from './src/lib/supabase';
 
@@ -31,6 +32,12 @@ function Navigation() {
         </>
       ) : !profile ? (
         <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
+      ) : !profile.is_phone_verified ? (
+        <Stack.Screen 
+          name="PhoneVerification" 
+          component={PhoneVerificationScreen} 
+          initialParams={{ phoneNumber: profile.phone_number }} 
+        />
       ) : (
         <Stack.Screen name="MainApp" component={TabNavigator} />
       )}
@@ -51,8 +58,8 @@ function App() {
           throw new Error('Failed to connect to Supabase. Please check your internet connection and try again.');
         }
 
-        // Initialize assets
-        await ExpoAsset.Asset.loadAsync([]);
+        // Initialize assets (ExpoAsset.Asset.loadAsync([]) was removed as it was redundant)
+        // await ExpoAsset.Asset.loadAsync([]); 
         setIsReady(true);
       } catch (e) {
         console.error('Error preparing app:', e);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback } from 'react'; // Removed useEffect, useState
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -90,7 +90,7 @@ const getScreenOptions = (routeName: keyof TabParamList, isTraveler: boolean): T
     case 'Messages':
       return {
         title: 'Messages',
-        headerShown: true,
+        headerShown: false, // Changed to false, header handled by custom header or MessagesStackNavigator
       };
     case 'Profile':
       return {
@@ -254,7 +254,7 @@ type RootTabNavigationProp = NavigationProp<HomeStackParamList>;
 export const TabNavigator = () => {
   const { profile, loading } = useAuth();
   const isTraveler = profile?.role === 'traveler';
-  const [isLoading, setIsLoading] = useState(true);
+  // const [isLoading, setIsLoading] = useState(true); // Removed
   const navigation = useNavigation<RootTabNavigationProp>();
   const insets = useSafeAreaInsets();
 
@@ -289,20 +289,20 @@ export const TabNavigator = () => {
     return <Ionicons name={iconName as any} size={size} color={color} />;
   }, []);
 
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Error initializing TabNavigator:', error);
-        setIsLoading(false);
-      }
-    };
+  // useEffect(() => { // Removed
+  //   const initialize = async () => {
+  //     try {
+  //       setIsLoading(false);
+  //     } catch (error) {
+  //       console.error('Error initializing TabNavigator:', error);
+  //       setIsLoading(false);
+  //     }
+  //   };
+  // 
+  //   initialize();
+  // }, []);
 
-    initialize();
-  }, []);
-
-  if (loading || !profile) {
+  if (loading || !profile) { // This check already handles initial loading
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color={colors.primary} />
