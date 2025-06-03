@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { View, TouchableOpacity, TextInput, StyleSheet, FlatList, Text, ActivityIndicator, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, borderRadius, spacing } from '../../theme';
-import { GOOGLE_PLACES_API_KEY } from '../../config/apiKeys';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Keyboard, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { colors } from '../../theme';
 
 interface LocationInputProps {
   value: string;
@@ -171,20 +170,22 @@ const LocationAutocomplete: React.FC<LocationInputProps> = ({
         console.log('Rendering suggestions list', suggestions.length);
         return (
           <View style={styles.suggestionsContainer}>
-            <FlatList
-              data={suggestions}
-              keyExtractor={(item) => item.place_id}
+            <ScrollView
               keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => (
+              nestedScrollEnabled={true}
+              style={styles.suggestionsScrollView}
+            >
+              {suggestions.map((item) => (
                 <TouchableOpacity
+                  key={item.place_id}
                   style={styles.suggestionItem}
                   onPress={() => handleSelectSuggestion(item)}
                 >
                   <Ionicons name="location-outline" size={16} color={colors.primary} style={styles.locationIcon} />
                   <Text style={styles.suggestionText} numberOfLines={2}>{item.description}</Text>
                 </TouchableOpacity>
-              )}
-            />
+              ))}
+            </ScrollView>
           </View>
         );
       })()}
@@ -252,6 +253,9 @@ const styles = StyleSheet.create({
   },
   locationIcon: {
     marginRight: 10,
+  },
+  suggestionsScrollView: {
+    // Add any additional styles for the ScrollView if needed
   },
 });
 

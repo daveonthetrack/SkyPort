@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useState } from 'react';
 import {
@@ -150,51 +150,44 @@ export default function DeliveredItemsScreen() {
           onPress={() => handleItemPress(item.id.toString())}
         >
           <View style={styles.itemCardContent}>
+            {item.image_url ? (
             <Image
-              source={{ uri: item.image_url || 'https://via.placeholder.com/100' }}
+                source={{ uri: item.image_url }}
               style={styles.itemImage}
-            />
-            <View style={styles.itemInfo}>
-              <View style={styles.itemHeader}>
-                <Text style={styles.itemTitle} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <View style={[styles.statusBadge, styles.deliveredBadge]}>
-                  <Text style={styles.statusText}>Delivered</Text>
-                </View>
+                onError={() => {
+                  console.log('Failed to load item image:', item.image_url);
+                }}
+              />
+            ) : (
+              <View style={[styles.itemImage, styles.imagePlaceholder]}>
+                <Ionicons name="cube-outline" size={32} color={colors.text.secondary} />
               </View>
+            )}
               
               <View style={styles.itemDetails}>
-                <View style={styles.detailItem}>
-                  <Ionicons name="cube-outline" size={16} color={colors.text.secondary} />
-                  <Text style={styles.detailText}>
-                    {item.size.charAt(0).toUpperCase() + item.size.slice(1)} Package
+              <Text style={styles.itemTitle}>{item.title}</Text>
+              <Text style={styles.itemRoute}>
+                {item.pickup_location} → {item.destination}
+              </Text>
+              <Text style={styles.deliveryDate}>
+                Delivered {formatDistanceToNow(new Date(item.updated_at), { addSuffix: true })}
                   </Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <Ionicons name="calendar-outline" size={16} color={colors.text.secondary} />
-                  <Text style={styles.detailText}>{formattedDate}</Text>
-                </View>
-              </View>
-
-              <View style={styles.userInfo}>
+              
+              <View style={styles.ownerInfo}>
+                {item.owner?.avatar_url ? (
                 <Image
-                  source={{ uri: item.owner?.avatar_url || 'https://via.placeholder.com/40' }}
-                  style={styles.userAvatar}
-                />
-                <View style={styles.userDetails}>
-                  <Text style={styles.userName} numberOfLines={1}>
-                    {item.owner?.name || 'Unknown'}
-                  </Text>
-                  <Text style={styles.itemTime}>Delivered on {formattedDate}</Text>
+                    source={{ uri: item.owner.avatar_url }}
+                    style={styles.ownerAvatar}
+                    onError={() => {
+                      console.log('Failed to load owner avatar:', item.owner?.avatar_url);
+                    }}
+                  />
+                ) : (
+                  <View style={[styles.ownerAvatar, styles.avatarPlaceholder]}>
+                    <Ionicons name="person" size={16} color={colors.text.secondary} />
                 </View>
-                <TouchableOpacity
-                  style={styles.viewDetailsButton}
-                  onPress={() => handleItemPress(item.id.toString())}
-                >
-                  <Text style={styles.viewDetailsText}>View Details</Text>
-                  <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-                </TouchableOpacity>
+                )}
+                <Text style={styles.ownerName}>From: {item.owner?.name || 'Unknown'}</Text>
               </View>
             </View>
           </View>
@@ -306,15 +299,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginRight: spacing.md,
   },
-  itemInfo: {
+  itemDetails: {
     flex: 1,
     justifyContent: 'space-between',
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.sm,
   },
   itemTitle: {
     fontSize: typography.sizes.lg,
@@ -323,25 +310,17 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: spacing.sm,
   },
-  itemDetails: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
-  },
-  detailText: {
+  itemRoute: {
     fontSize: typography.sizes.sm,
     color: colors.text.secondary,
-    marginLeft: spacing.xs,
+    marginBottom: spacing.sm,
   },
-  userInfo: {
+  deliveryDate: {
+    fontSize: typography.sizes.sm,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
+  },
+  ownerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: spacing.sm,
@@ -349,7 +328,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.background,
   },
-  userAvatar: {
+  ownerAvatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -357,47 +336,20 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.primary + '20',
   },
-  userDetails: {
-    flex: 1,
-  },
-  userName: {
+  ownerName: {
     fontSize: typography.sizes.sm,
     fontWeight: '600',
     color: colors.text.primary,
   },
-  itemTime: {
-    fontSize: typography.sizes.xs,
-    color: colors.text.secondary,
-    marginTop: 2,
-  },
-  statusBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 12,
-  },
-  deliveredBadge: {
-    backgroundColor: colors.success + '20',
-  },
-  statusText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: '600',
-    color: colors.success,
-  },
-  viewDetailsButton: {
-    flexDirection: 'row',
+  imagePlaceholder: {
+    backgroundColor: colors.background,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    backgroundColor: colors.primary + '05',
   },
-  viewDetailsText: {
-    fontSize: typography.sizes.sm,
-    color: colors.primary,
-    fontWeight: '600',
-    marginRight: spacing.xs,
+  avatarPlaceholder: {
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyContainer: {
     flex: 1,

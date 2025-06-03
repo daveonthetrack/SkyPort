@@ -6,27 +6,28 @@ import { formatDistanceToNow } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    Image,
-    Modal,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import Animated, {
-    FadeInDown,
-    FadeInUp,
-    Layout,
-    useAnimatedStyle,
-    useSharedValue,
-    withSpring
+  FadeInDown,
+  FadeInUp,
+  Layout,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring
 } from 'react-native-reanimated';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { HomeStackParamList, TabParamList } from '../navigation/types';
 import { borderRadius, colors, shadows, spacing, typography } from '../theme';
@@ -62,7 +63,13 @@ const QuickActionButton = ({ icon, label, onPress }: QuickActionProps) => (
     >
       <Ionicons name={icon} size={24} color={colors.white} />
     </LinearGradient>
-    <Text style={styles.quickActionLabel}>{label}</Text>
+    <Text 
+      style={styles.quickActionLabel}
+      numberOfLines={2}
+      ellipsizeMode="tail"
+    >
+      {label}
+    </Text>
   </TouchableOpacity>
 );
 
@@ -117,8 +124,20 @@ const StatCard = ({ title, value, icon, onPress, details }: StatCardProps) => {
         <View style={styles.statIconContainer}>
           <Ionicons name={icon} size={24} color={colors.primary} />
         </View>
-        <Text style={styles.statValue}>{value}</Text>
-        <Text style={styles.statTitle}>{title}</Text>
+        <Text 
+          style={styles.statValue}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          {value}
+        </Text>
+        <Text 
+          style={styles.statTitle}
+          numberOfLines={2}
+          ellipsizeMode="tail"
+        >
+          {title}
+        </Text>
       </Animated.View>
     </TouchableOpacity>
   );
@@ -133,9 +152,25 @@ const ActivityListItem = ({ item }: { item: ActivityItem }) => (
       <Ionicons name={item.icon} size={24} color={colors.primary} />
     </View>
     <View style={styles.activityContent}>
-      <Text style={styles.activityTitle}>{item.title}</Text>
-      <Text style={styles.activityDescription}>{item.description}</Text>
-      <Text style={styles.activityTime}>
+      <Text 
+        style={styles.activityTitle}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
+        {item.title}
+      </Text>
+      <Text 
+        style={styles.activityDescription}
+        numberOfLines={2}
+        ellipsizeMode="tail"
+      >
+        {item.description}
+      </Text>
+      <Text 
+        style={styles.activityTime}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
         {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
       </Text>
     </View>
@@ -156,6 +191,8 @@ interface ExtendedItem extends Item {
 const TravelerDashboard = ({ navigation, route }: Props) => {
   const tabNavigation = useNavigation<BottomTabNavigationProp<TabParamList>>();
   const { session, signOut, profile } = useAuth();
+  const { theme } = useTheme();
+  const themeColors = theme.colors;
   const [stats, setStats] = useState({
     activeTrips: 0,
     itemsCarrying: 0,
@@ -208,7 +245,13 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
           fetchItems();
         })
         .subscribe((status: string) => {
-          console.log('Items subscription status:', status);
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ Items subscription connected successfully');
+          } else if (status === 'CHANNEL_ERROR') {
+            console.log('⚠️ Items subscription error - continuing with polling fallback');
+          } else {
+            console.log('Items subscription status:', status);
+          }
         });
       
       // Subscribe to trips table changes (for active trips)
@@ -225,7 +268,13 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
           fetchRecentActivity();
         })
         .subscribe((status: string) => {
-          console.log('Trips subscription status:', status);
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ Trips subscription connected successfully');
+          } else if (status === 'CHANNEL_ERROR') {
+            console.log('⚠️ Trips subscription error - continuing with polling fallback');
+          } else {
+            console.log('Trips subscription status:', status);
+          }
         });
       
       // Return cleanup function
@@ -410,10 +459,19 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
         onPress={() => navigation.navigate('TravelerItemDetails', { itemId: item.id.toString() })}
       >
         <View style={styles.itemCardContent}>
-          <Image
-            source={{ uri: item.image_url || 'https://via.placeholder.com/150' }}
-            style={styles.itemImage}
-          />
+          {item.image_url ? (
+            <Image
+              source={{ uri: item.image_url }}
+              style={styles.itemImage}
+              onError={() => {
+                console.log('Failed to load item image:', item.image_url);
+              }}
+            />
+          ) : (
+            <View style={[styles.itemImage, styles.imagePlaceholder]}>
+              <Ionicons name="cube-outline" size={32} color={colors.text.secondary} />
+            </View>
+          )}
           <View style={styles.itemContent}>
             <View style={styles.itemHeader}>
               <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
@@ -454,10 +512,19 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
 
             <View style={styles.itemFooter}>
               <View style={styles.userInfo}>
-                <Image
-                  source={{ uri: item.owner?.avatar_url || 'https://via.placeholder.com/40' }}
-                  style={styles.userAvatar}
-                />
+                {item.owner?.avatar_url ? (
+                  <Image
+                    source={{ uri: item.owner.avatar_url }}
+                    style={styles.ownerAvatar}
+                    onError={() => {
+                      console.log('Failed to load owner avatar:', item.owner?.avatar_url);
+                    }}
+                  />
+                ) : (
+                  <View style={[styles.ownerAvatar, styles.avatarPlaceholder]}>
+                    <Ionicons name="person" size={16} color={colors.text.secondary} />
+                  </View>
+                )}
                 <View style={styles.userDetails}>
                   <Text style={styles.userName} numberOfLines={1}>
                     {item.owner?.name || 'Unknown'}
@@ -501,7 +568,7 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
       label: 'Settings',
       onPress: () => {
         setIsMenuVisible(false);
-        Alert.alert('Coming Soon', 'Settings will be available in the next update.');
+        navigation.navigate('Settings' as never);
       },
     },
     {
@@ -509,7 +576,7 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
       label: 'Help & Support',
       onPress: () => {
         setIsMenuVisible(false);
-        Alert.alert('Coming Soon', 'Help & Support will be available in the next update.');
+        navigation.navigate('HelpSupport' as never);
       },
     },
     {
@@ -539,7 +606,13 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
       >
         <View style={styles.menuContainer}>
           <View style={styles.menuHeader}>
-            <Text style={styles.menuTitle}>Menu</Text>
+            <Text 
+              style={styles.menuTitle}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              Menu
+            </Text>
             <TouchableOpacity
               onPress={() => setIsMenuVisible(false)}
               style={styles.closeButton}
@@ -557,7 +630,13 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
               onPress={option.onPress}
             >
               <Ionicons name={option.icon} size={24} color={colors.primary} />
-              <Text style={styles.menuOptionText}>{option.label}</Text>
+              <Text 
+                style={styles.menuOptionText}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {option.label}
+              </Text>
               <Ionicons name="chevron-forward" size={20} color={colors.text.secondary} />
             </TouchableOpacity>
           ))}
@@ -575,8 +654,8 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
 
   return (
     <ScrollView
-      style={styles.container}
-      contentContainerStyle={{ paddingBottom: 100 }}
+      style={[styles.container, { backgroundColor: themeColors.background }]}
+      contentContainerStyle={styles.scrollContent}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
@@ -595,11 +674,13 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
             >
               <Ionicons name="menu" size={24} color={colors.white} />
             </TouchableOpacity>
-            <View>
+            <View style={styles.welcomeContainer}>
               <AnimatedTextWrapper 
                 entering={FadeInUp.delay(200).springify()}
                 layout={Layout.duration(300)}
                 style={styles.welcomeText}
+                numberOfLines={1}
+                ellipsizeMode="tail"
               >
                 Welcome back,
               </AnimatedTextWrapper>
@@ -607,6 +688,8 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
                 entering={FadeInUp.delay(400).springify()}
                 layout={Layout.duration(300)}
                 style={styles.userNameAnimated}
+                numberOfLines={1}
+                ellipsizeMode="tail"
               >
                 {profile?.name || session?.user?.email?.split('@')[0]}
               </AnimatedTextWrapper>
@@ -664,6 +747,8 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
           entering={FadeInUp.delay(600).springify()}
           layout={Layout.duration(300)}
           style={styles.sectionTitle}
+          numberOfLines={1}
+          ellipsizeMode="tail"
         >
           Quick Actions
         </AnimatedTextWrapper>
@@ -692,7 +777,13 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
 
         <View style={styles.feedSection}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Picked Up Items</Text>
+            <Text 
+              style={styles.sectionTitle}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              Picked Up Items
+            </Text>
             
           </View>
           
@@ -712,6 +803,8 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
           entering={FadeInUp.delay(800).springify()}
           layout={Layout.duration(300)}
           style={styles.sectionTitle}
+          numberOfLines={1}
+          ellipsizeMode="tail"
         >
           Your Statistics
         </AnimatedTextWrapper>
@@ -722,6 +815,157 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
             icon="airplane"
             details={`You currently have ${stats.activeTrips} active trips.\n\nThese trips are currently in progress and you can still accept items for delivery.`}
           />
+          <StatCard
+            title="Items Carrying"
+            value={stats.itemsCarrying}
+            icon="cube"
+            details={`You are currently carrying ${stats.itemsCarrying} items for delivery.\n\nThese items have been picked up and are being transported to their destinations.`}
+          />
+          <StatCard
+            title="Completed"
+            value={stats.completedDeliveries}
+            icon="checkmark-circle"
+            details={`You have successfully completed ${stats.completedDeliveries} deliveries.\n\nThese represent items you've delivered to their final destinations.`}
+          />
+        </View>
+
+        <View style={styles.additionalStatsContainer}>
+          <View style={styles.additionalStatsRow}>
+            <View style={styles.miniStatCard}>
+              <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+              <Text 
+                style={styles.miniStatValue}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {upcomingTrips}
+              </Text>
+              <Text 
+                style={styles.miniStatLabel}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                Upcoming
+              </Text>
+            </View>
+            <View style={styles.miniStatCard}>
+              <Ionicons name="checkmark-done-outline" size={20} color={colors.secondary} />
+              <Text 
+                style={styles.miniStatValue}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {completedTrips}
+              </Text>
+              <Text 
+                style={styles.miniStatLabel}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                Completed
+              </Text>
+            </View>
+            <View style={styles.miniStatCard}>
+              <Ionicons name="trending-up-outline" size={20} color={colors.success} />
+              <Text 
+                style={styles.miniStatValue}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {stats.completedDeliveries > 0 && (stats.activeTrips + completedTrips) > 0 
+                  ? Math.round((stats.completedDeliveries / (stats.activeTrips + completedTrips + stats.completedDeliveries)) * 100) 
+                  : 0}%
+              </Text>
+              <Text 
+                style={styles.miniStatLabel}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                Success Rate
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={[styles.progressSection, { backgroundColor: themeColors.surface }]}>
+          <Text 
+            style={[styles.progressTitle, { color: themeColors.text.primary }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            Trip Progress
+          </Text>
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBar}>
+              <View 
+                style={[
+                  styles.progressFill, 
+                  { 
+                    width: `${(stats.activeTrips + completedTrips) > 0 ? (completedTrips / (stats.activeTrips + completedTrips)) * 100 : 0}%`,
+                    backgroundColor: colors.success 
+                  }
+                ]} 
+              />
+            </View>
+            <Text 
+              style={[styles.progressText, { color: themeColors.text.secondary }]}
+              numberOfLines={2}
+              ellipsizeMode="tail"
+            >
+              {completedTrips} of {stats.activeTrips + completedTrips} trips completed
+            </Text>
+          </View>
+        </View>
+        
+        <View style={[styles.insightsSection, { backgroundColor: themeColors.surface }]}>
+          <Text 
+            style={[styles.insightsTitle, { color: themeColors.text.primary }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            Quick Insights
+          </Text>
+          <View style={styles.insightsList}>
+            <View style={styles.insightItem}>
+              <Ionicons name="airplane-outline" size={16} color={colors.primary} />
+              <Text 
+                style={[styles.insightText, { color: themeColors.text.secondary }]}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+              >
+                {stats.activeTrips > 0 
+                  ? `${stats.activeTrips} active trips available for deliveries`
+                  : 'No active trips - consider posting a new trip'
+                }
+              </Text>
+            </View>
+            <View style={styles.insightItem}>
+              <Ionicons name="cube-outline" size={16} color={colors.secondary} />
+              <Text 
+                style={[styles.insightText, { color: themeColors.text.secondary }]}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+              >
+                {stats.itemsCarrying > 0 
+                  ? `Currently carrying ${stats.itemsCarrying} items for delivery`
+                  : 'No items being carried at the moment'
+                }
+              </Text>
+            </View>
+            <View style={styles.insightItem}>
+              <Ionicons name="trophy-outline" size={16} color={colors.success} />
+              <Text 
+                style={[styles.insightText, { color: themeColors.text.secondary }]}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+              >
+                {stats.completedDeliveries >= 10 
+                  ? 'Experienced traveler - Excellent work!' 
+                  : `${10 - stats.completedDeliveries} more deliveries to become experienced`
+                }
+              </Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.recentActivityContainer}>
@@ -730,6 +974,8 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
               entering={FadeInUp.delay(1000).springify()}
               layout={Layout.duration(300)}
               style={styles.sectionTitle}
+              numberOfLines={1}
+              ellipsizeMode="tail"
             >
               Recent Activity
             </AnimatedTextWrapper>
@@ -738,7 +984,13 @@ const TravelerDashboard = ({ navigation, route }: Props) => {
               layout={Layout.duration(300)}
             >
               <TouchableOpacity>
-                <Text style={styles.seeAllText}>See All</Text>
+                <Text 
+                  style={styles.seeAllText}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  See All
+                </Text>
               </TouchableOpacity>
             </Animated.View>
           </View>
@@ -761,7 +1013,9 @@ export default TravelerDashboard;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+  },
+  scrollContent: {
+    paddingBottom: 100,
   },
   header: {
     padding: spacing.xl,
@@ -772,42 +1026,60 @@ const styles = StyleSheet.create({
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
     gap: spacing.md,
+  },
+  welcomeContainer: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    flex: 1,
   },
   welcomeText: {
     fontSize: typography.sizes.lg,
     color: colors.white,
     opacity: 0.9,
+    lineHeight: typography.sizes.lg * 1.3,
+    textAlign: 'left',
   },
   userNameAnimated: {
     fontSize: typography.sizes.xxl,
     fontWeight: '700',
     color: colors.white,
     marginTop: spacing.xs,
+    lineHeight: typography.sizes.xxl * 1.2,
+    textAlign: 'left',
   },
   content: {
     padding: spacing.md,
+    paddingTop: spacing.lg,
   },
   sectionTitle: {
     fontSize: typography.sizes.lg,
     fontWeight: '600',
     color: colors.text.primary,
-    marginVertical: spacing.md,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+    textAlign: 'left',
   },
   quickActionsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
+    alignItems: 'flex-start',
     marginHorizontal: -spacing.xs,
+    marginBottom: spacing.md,
   },
   quickActionButton: {
     width: CARD_WIDTH,
     alignItems: 'center',
+    justifyContent: 'center',
     marginHorizontal: spacing.xs,
     marginBottom: spacing.md,
   },
@@ -824,12 +1096,16 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     color: colors.text.primary,
     fontWeight: '500',
+    lineHeight: typography.sizes.sm * 1.4,
+    textAlign: 'center',
   },
   statsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
+    alignItems: 'flex-start',
     marginHorizontal: -spacing.xs,
+    marginBottom: spacing.md,
   },
   statCard: {
     width: CARD_WIDTH,
@@ -838,6 +1114,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginHorizontal: spacing.xs,
     marginBottom: spacing.md,
+    alignItems: 'flex-start',
     ...shadows.medium,
   },
   statIconContainer: {
@@ -854,10 +1131,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text.primary,
     marginBottom: spacing.xs,
+    lineHeight: typography.sizes.xl * 1.2,
+    textAlign: 'left',
   },
   statTitle: {
     fontSize: typography.sizes.sm,
     color: colors.text.secondary,
+    lineHeight: typography.sizes.sm * 1.3,
+    textAlign: 'left',
   },
   recentActivityContainer: {
     marginTop: spacing.md,
@@ -867,6 +1148,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.md,
+    marginTop: spacing.xs,
   },
   seeAllText: {
     fontSize: typography.sizes.sm,
@@ -899,16 +1181,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text.primary,
     marginBottom: spacing.xs,
+    lineHeight: typography.sizes.md * 1.3,
+    textAlign: 'left',
   },
   activityDescription: {
     fontSize: typography.sizes.sm,
     color: colors.text.secondary,
     marginBottom: spacing.xs,
+    lineHeight: typography.sizes.sm * 1.4,
+    textAlign: 'left',
   },
   activityTime: {
     fontSize: typography.sizes.xs,
     color: colors.text.secondary,
     opacity: 0.7,
+    lineHeight: typography.sizes.xs * 1.3,
   },
   signOutButton: {
     width: 40,
@@ -926,6 +1213,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   feedSection: {
+    marginTop: spacing.lg,
     marginBottom: spacing.lg,
   },
   feedContainer: {
@@ -1023,13 +1311,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  userAvatar: {
+  ownerAvatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
     marginRight: spacing.sm,
     borderWidth: 2,
     borderColor: colors.primary + '20',
+  },
+  avatarPlaceholder: {
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   userDetails: {
     flex: 1,
@@ -1111,6 +1404,106 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: typography.sizes.md,
     color: colors.text.primary,
+    marginLeft: spacing.md,
+  },
+  imagePlaceholder: {
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  additionalStatsContainer: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  additionalStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    marginHorizontal: -spacing.xs / 2,
+  },
+  miniStatCard: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginHorizontal: spacing.xs / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 100,
+    ...shadows.medium,
+  },
+  miniStatValue: {
+    fontSize: typography.sizes.xl,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+    lineHeight: typography.sizes.xl * 1.2,
+    textAlign: 'center',
+  },
+  miniStatLabel: {
+    fontSize: typography.sizes.sm,
+    color: colors.text.secondary,
+    lineHeight: typography.sizes.sm * 1.3,
+    textAlign: 'center',
+  },
+  progressSection: {
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    marginHorizontal: spacing.xs,
+  },
+  progressTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: spacing.md,
+    textAlign: 'left',
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  progressBar: {
+    flex: 1,
+    height: 20,
+    backgroundColor: colors.background,
+    borderRadius: 10,
+    marginRight: spacing.md,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 10,
+  },
+  progressText: {
+    fontSize: typography.sizes.sm,
+    color: colors.text.secondary,
+    lineHeight: typography.sizes.sm * 1.4,
+    textAlign: 'right',
+  },
+  insightsSection: {
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.md,
+  },
+  insightsTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: spacing.md,
+  },
+  insightsList: {
+    gap: spacing.md,
+  },
+  insightItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  insightText: {
+    fontSize: typography.sizes.sm,
+    color: colors.text.secondary,
     marginLeft: spacing.md,
   },
 }); 

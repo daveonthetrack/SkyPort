@@ -1,5 +1,7 @@
 import { TextStyle, ViewStyle } from 'react-native';
+import { Theme, ThemeColors } from '../contexts/ThemeContext';
 
+// Default light theme colors for backward compatibility
 export const colors = {
   primary: '#0095F6',
   secondary: '#00A5E0',
@@ -29,6 +31,9 @@ export const colors = {
     gradientEnd: '#0EA5E9',
   }
 };
+
+// Function to get theme-aware colors
+export const getThemeColors = (theme: Theme): ThemeColors => theme.colors;
 
 export const typography = {
   sizes: {
@@ -64,6 +69,32 @@ export const borderRadius = {
   round: 9999,
 };
 
+// Theme-aware shadows function
+export const getShadows = (theme: Theme) => ({
+  small: {
+    shadowColor: theme.colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: theme.isDark ? 0.3 : 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  medium: {
+    shadowColor: theme.colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: theme.isDark ? 0.4 : 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  large: {
+    shadowColor: theme.colors.shadow,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: theme.isDark ? 0.5 : 0.2,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+});
+
+// Default shadows for backward compatibility
 export const shadows = {
   small: {
     shadowColor: colors.shadow,
@@ -95,6 +126,64 @@ export const layout = {
   maxWidth: 1200,
 };
 
+// Theme-aware auth styles function
+export const getAuthStyles = (theme: Theme) => ({
+  input: {
+    height: 50,
+    backgroundColor: theme.colors.auth.inputBackground,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    fontSize: typography.sizes.md,
+    color: theme.colors.auth.inputText,
+    width: '100%',
+    marginBottom: spacing.md,
+    borderWidth: theme.isDark ? 1 : 0,
+    borderColor: theme.isDark ? theme.colors.border : 'transparent',
+  } as TextStyle,
+  button: {
+    height: 50,
+    backgroundColor: theme.colors.auth.primary,
+    borderRadius: borderRadius.lg,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    width: '100%',
+    marginVertical: spacing.md,
+  } as ViewStyle,
+  buttonText: {
+    color: theme.colors.auth.buttonText,
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.semibold,
+  } as TextStyle,
+  secondaryButton: {
+    height: 50,
+    backgroundColor: 'transparent',
+    borderRadius: borderRadius.lg,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: theme.colors.auth.text,
+  } as ViewStyle,
+  secondaryButtonText: {
+    color: theme.colors.auth.text,
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.medium,
+  } as TextStyle,
+  title: {
+    fontSize: typography.sizes.xxl,
+    fontWeight: typography.weights.bold,
+    color: theme.colors.auth.text,
+    marginBottom: spacing.lg,
+  } as TextStyle,
+  subtitle: {
+    fontSize: typography.sizes.md,
+    color: theme.colors.auth.secondaryText,
+    marginBottom: spacing.xl,
+    textAlign: 'center' as const,
+  } as TextStyle,
+});
+
+// Default auth styles for backward compatibility
 export const authStyles = {
   input: {
     height: 50,

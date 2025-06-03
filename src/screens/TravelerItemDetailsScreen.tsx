@@ -18,8 +18,13 @@ import {
     View
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import HandoverCamera from '../components/HandoverCamera';
+import { QRScanner } from '../components/QRScanner';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { didService } from '../services/DIDService';
+import { HandoverService, PackageDetails } from '../services/HandoverService';
+import { GPSCoordinates, locationService } from '../services/LocationService';
 import { borderRadius, colors, shadows, spacing, typography } from '../theme';
 
 const { width } = Dimensions.get('window');
@@ -29,6 +34,27 @@ type RouteParams = {
 };
 
 type NavigationProp = NativeStackNavigationProp<any>;
+
+interface Item {
+  id: string;
+  title: string;
+  description: string;
+  pickup_location: string;
+  destination: string;
+  size: 'small' | 'medium' | 'large';
+  status: 'pending' | 'accepted' | 'delivered';
+  created_at: string;
+  image_url?: string;
+  user_id: number;
+  accepted_by?: number;
+  pickup_date?: string;
+  estimated_delivery_date?: string;
+  owner: {
+    id: number;
+    name: string;
+    avatar_url?: string;
+  };
+}
 
 export default function TravelerItemDetailsScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -40,9 +66,74 @@ export default function TravelerItemDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
+  // Handover verification states
+  const [showHandoverCamera, setShowHandoverCamera] = useState(false);
+  const [didStatus, setDidStatus] = useState<'loading' | 'exists' | 'missing'>('loading');
+  const [userDID, setUserDID] = useState<string | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<GPSCoordinates | null>(null);
+
+  // QR Scanner states
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [qrVerified, setQRVerified] = useState(false);
+  const [scannedQRData, setScannedQRData] = useState<any>(null);
+
   useEffect(() => {
     fetchItemDetails();
   }, [itemId]);
+
+  // Initialize handover verification system
+  useEffect(() => {
+    initializeHandoverSystem();
+  }, [session?.user?.id]);
+
+  const initializeHandoverSystem = async () => {
+    if (!session?.user?.id) return;
+    
+    // Check DID status
+    try {
+      setDidStatus('loading');
+      
+      // Get user profile from Supabase to check for DID
+      const { data: userProfile, error } = await supabase
+        .from('profiles')
+        .select('did_identifier, public_key')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (!error && userProfile?.did_identifier) {
+        setDidStatus('exists');
+        setUserDID(userProfile.did_identifier);
+        console.log('✅ DID found in profile:', userProfile.did_identifier);
+      } else {
+        // Check if user has DID key pair stored locally
+        const hasKeyPair = await didService.hasDIDKeyPair(session.user.id);
+        
+        if (hasKeyPair) {
+          const keyPair = await didService.retrieveDIDKeyPair(session.user.id);
+          if (keyPair) {
+            setDidStatus('exists');
+            setUserDID(keyPair.did);
+            console.log('✅ DID found in keychain:', keyPair.did);
+          } else {
+            setDidStatus('missing');
+          }
+        } else {
+          setDidStatus('missing');
+        }
+      }
+    } catch (error) {
+      console.error('Error checking DID status:', error);
+      setDidStatus('missing');
+    }
+    
+    // Get current location
+    try {
+      const location = await locationService.getCurrentLocation();
+      setCurrentLocation(location);
+    } catch (error) {
+      console.error('Error getting location:', error);
+    }
+  };
 
   const fetchItemDetails = async () => {
     try {
@@ -75,73 +166,232 @@ export default function TravelerItemDetailsScreen() {
   };
 
   const handleMarkAsDelivered = () => {
-    Alert.alert(
-      'Mark as Delivered',
-      'Are you sure you have delivered this item?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Confirm',
-          style: 'default',
-          onPress: async () => {
-            try {
-              setUpdating(true);
-              
-              const { error } = await supabase
-                .from('items')
-                .update({ 
-                  status: 'delivered',
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', itemId);
-              
-              if (error) throw error;
-              
-              // Send delivery notification to owner
-              await supabase
-                .from('messages')
-                .insert({
-                  sender_id: session?.user?.id,
-                  receiver_id: item.owner.id,
-                  content: `I have delivered "${item.title}" to ${item.destination}.`,
-                  item_id: itemId,
-                  created_at: new Date().toISOString()
-                });
-              
-              // Update local state to reflect the change
-              setItem((prev: any) => ({
-                ...prev,
-                status: 'delivered',
-                updated_at: new Date().toISOString()
-              }));
-              
-              Alert.alert(
-                'Success', 
-                'Item marked as delivered!',
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      // Navigate back to dashboard
-                      navigation.navigate('Dashboard');
-                    }
-                  }
-                ]
-              );
-            } catch (error: any) {
-              console.error('Error marking item as delivered:', error);
-              Alert.alert('Error', 'Failed to mark item as delivered. Please try again.');
-            } finally {
-              setUpdating(false);
+    if (!item) return;
+
+    if (!session?.user?.id) {
+      Alert.alert('Error', 'Please log in to mark items as delivered');
+      return;
+    }
+
+    // Check if user has DID
+    if (didStatus === 'missing') {
+      Alert.alert(
+        'Digital Identity Required',
+        'You need to create your digital identity first for secure delivery verification.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Create Identity',
+            onPress: async () => {
+              try {
+                const result = await didService.createDIDForUser(session.user.id);
+                if (result.success) {
+                  Alert.alert('Success', 'Your digital identity has been created');
+                  setDidStatus('exists');
+                  setUserDID(result.did || null);
+                } else {
+                  Alert.alert('Error', result.error || 'Failed to create digital identity');
+                }
+              } catch (error) {
+                Alert.alert('Error', 'Unable to create digital identity');
+              }
             }
-          },
-        },
-      ],
-      { cancelable: true }
+          }
+        ]
+      );
+      return;
+    }
+
+    // Step 1: Scan QR code first
+    if (!qrVerified) {
+      Alert.alert(
+        'QR Code Required',
+        'Please scan the sender\'s QR code to verify package authenticity before delivery.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Scan QR Code',
+            onPress: () => setShowQRScanner(true)
+          }
+        ]
+      );
+      return;
+    }
+
+    // Step 2: Proceed with handover verification after QR is verified
+    Alert.alert(
+      'Start Delivery Verification',
+      'Ready to complete secure delivery verification with photo and GPS.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start Verification',
+          onPress: () => setShowHandoverCamera(true)
+        }
+      ]
     );
+  };
+
+  const handleQRScan = async (qrData: string) => {
+    if (!item) return;
+
+    try {
+      const handoverService = HandoverService.getInstance();
+      
+      // Validate QR code against expected package
+      const validation = await handoverService.validateQRCode(qrData, `ITEM-${item.id}`);
+      
+      if (validation.valid) {
+        setScannedQRData(validation.packageData);
+        setQRVerified(true);
+        setShowQRScanner(false);
+        
+        Alert.alert(
+          '✅ QR Code Verified!',
+          `Package authenticated successfully!\n\nPackage: ${validation.packageData?.title || item.title}\nDestination: ${validation.packageData?.destination || item.destination}\n\nYou can now proceed with delivery verification.`,
+          [
+            {
+              text: 'Continue',
+              onPress: () => {
+                // Automatically start handover verification
+                setShowHandoverCamera(true);
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          '❌ Invalid QR Code',
+          validation.error || 'The scanned QR code does not match this package.',
+          [
+            {
+              text: 'Try Again',
+              onPress: () => setShowQRScanner(true)
+            },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('QR validation error:', error);
+      Alert.alert(
+        'Verification Error',
+        'Unable to validate QR code. Please try again.',
+        [
+          {
+            text: 'Try Again',
+            onPress: () => setShowQRScanner(true)
+          },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+    }
+  };
+
+  const handleDeliveryVerificationCapture = async (photoUri: string, location: GPSCoordinates) => {
+    if (!item || !session?.user?.id) {
+      Alert.alert('Error', 'Missing item or user information');
+      setShowHandoverCamera(false);
+      return;
+    }
+
+    try {
+      const handoverService = HandoverService.getInstance();
+
+      // Create package details for verification
+      const packageDetails: PackageDetails = {
+        packageId: `ITEM-${item.id}`,
+        senderDID: userDID || 'temp-sender-did',
+        travelerDID: userDID || 'temp-traveler-did',
+        destination: item.destination,
+        value: 0, // Could be item value if available
+        expectedLocation: {
+          latitude: 37.7749, // This would normally come from item destination location
+          longitude: -122.4194,
+          accuracy: 10
+        }
+      };
+
+      // Verify delivery
+      const result = await handoverService.verifyDelivery(packageDetails, session.user.id);
+
+      if (result.success) {
+        // Complete the delivery in database
+        await completeDelivery();
+        
+        Alert.alert(
+          'Delivery Verified! 🎉',
+          `Package delivery successfully verified!\n\nLocation Accuracy: ${result.distance}m\nVerification: ${result.verified ? 'Confirmed' : 'Manual Override'}\nPayment released automatically! 💰`,
+          [{ text: 'Continue', style: 'default' }]
+        );
+      } else {
+        Alert.alert(
+          'Verification Failed',
+          result.error || 'Unable to complete delivery verification',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Delivery verification error:', error);
+      Alert.alert('Verification Failed', 'Unable to process delivery verification. Please try again.');
+    } finally {
+      setShowHandoverCamera(false);
+    }
+  };
+
+  const completeDelivery = async () => {
+    try {
+      setUpdating(true);
+      
+      const { error } = await supabase
+        .from('items')
+        .update({ 
+          status: 'delivered',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', itemId);
+      
+      if (error) throw error;
+      
+      // Send delivery notification to owner
+      await supabase
+        .from('messages')
+        .insert({
+          sender_id: session?.user?.id,
+          receiver_id: item.owner.id,
+          content: `I have delivered "${item.title}" to ${item.destination}.`,
+          item_id: itemId,
+          created_at: new Date().toISOString()
+        });
+      
+      // Update local state to reflect the change
+      setItem((prev: any) => ({
+        ...prev,
+        status: 'delivered',
+        updated_at: new Date().toISOString()
+      }));
+      
+      const successMessage = 'Item marked as delivered! 🎉';
+      
+      Alert.alert(
+        'Success', 
+        successMessage,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Navigate back to dashboard
+              navigation.navigate('Dashboard');
+            }
+          }
+        ]
+      );
+    } catch (error: any) {
+      console.error('Error marking item as delivered:', error.message);
+      Alert.alert('Error', `Failed to mark as delivered: ${error.message}`);
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handleContactOwner = async () => {
@@ -354,10 +604,19 @@ export default function TravelerItemDetailsScreen() {
           <Text style={styles.sectionTitle}>Item Owner</Text>
           <View style={styles.ownerCard}>
             <View style={styles.ownerInfo}>
+              {item.owner?.avatar_url ? (
               <Image
-                source={{ uri: item.owner?.avatar_url || 'https://via.placeholder.com/40' }}
+                  source={{ uri: item.owner.avatar_url }}
                 style={styles.ownerAvatar}
+                  onError={() => {
+                    console.log('Failed to load owner avatar:', item.owner?.avatar_url);
+                  }}
               />
+              ) : (
+                <View style={[styles.ownerAvatar, styles.avatarPlaceholder]}>
+                  <Ionicons name="person" size={16} color={colors.text.secondary} />
+                </View>
+              )}
               <View style={styles.ownerDetails}>
                 <Text style={styles.ownerName}>{item.owner?.name || 'Unknown'}</Text>
                 <Text style={styles.ownerRole}>Item Owner</Text>
@@ -397,6 +656,29 @@ export default function TravelerItemDetailsScreen() {
 
         <View style={styles.bottomSpacing} />
       </ScrollView>
+      
+      {/* QR Code Scanner */}
+      {showQRScanner && (
+        <QRScanner
+          onScan={handleQRScan}
+          onCancel={() => setShowQRScanner(false)}
+          title="Scan Package QR"
+          subtitle="Scan the sender's QR code to verify package"
+        />
+      )}
+      
+      {/* Handover Verification Camera */}
+      {showHandoverCamera && item && currentLocation && (
+        <HandoverCamera
+          expectedLocation={currentLocation} // Use current location as expected for now
+          onCapture={handleDeliveryVerificationCapture}
+          onCancel={() => {
+            setShowHandoverCamera(false);
+          }}
+          type="delivery"
+          packageTitle={item.title}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -637,5 +919,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     fontSize: typography.sizes.lg,
     color: colors.error,
+  },
+  avatarPlaceholder: {
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 }); 

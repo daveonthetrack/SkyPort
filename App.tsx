@@ -1,19 +1,24 @@
-import React, { useEffect } from 'react';
+// Polyfills must be imported first
+import 'react-native-get-random-values';
+
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { AuthProvider, useAuth } from './src/contexts/AuthContext';
-import { ThemeProvider } from './src/contexts/ThemeContext';
-import SignInScreen from './src/screens/SignInScreen';
-import SignUpScreen from './src/screens/SignUpScreen';
-import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
-import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
-import ProfileSetupScreen from './src/screens/ProfileSetupScreen';
-import { TabNavigator } from './src/navigation/TabNavigator';
-import { RootStackParamList } from './src/navigation/types';
 import { registerRootComponent } from 'expo';
 import * as ExpoAsset from 'expo-asset';
-import { View, Text } from 'react-native';
+import React, { useEffect } from 'react';
+import { StatusBar, Text, View } from 'react-native';
+import { AuthProvider, useAuth } from './src/contexts/AuthContext';
+import { DIDProvider } from './src/contexts/DIDContext';
+import { SettingsProvider, useSettings } from './src/contexts/SettingsContext';
+import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { testSupabaseConnection } from './src/lib/supabase';
+import { TabNavigator } from './src/navigation/TabNavigator';
+import { RootStackParamList } from './src/navigation/types';
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+import ProfileSetupScreen from './src/screens/ProfileSetupScreen';
+import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
+import SignInScreen from './src/screens/SignInScreen';
+import SignUpScreen from './src/screens/SignUpScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -38,9 +43,23 @@ function Navigation() {
   );
 }
 
-function App() {
+function ThemeSync() {
+  const { settings, loading } = useSettings();
+  const { setTheme } = useTheme();
+
+  useEffect(() => {
+    if (!loading) {
+      setTheme(settings.darkMode);
+    }
+  }, [settings.darkMode, loading, setTheme]);
+
+  return null;
+}
+
+function AppContent() {
   const [isReady, setIsReady] = React.useState(false);
   const [error, setError] = React.useState<Error | null>(null);
+  const { theme } = useTheme();
 
   useEffect(() => {
     async function prepare() {
@@ -65,26 +84,63 @@ function App() {
 
   if (error) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>Error loading app: {error.message}</Text>
+      <View style={{ 
+        flex: 1, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        backgroundColor: theme.colors.background 
+      }}>
+        <StatusBar 
+          barStyle={theme.isDark ? 'light-content' : 'dark-content'} 
+          backgroundColor={theme.colors.background}
+        />
+        <Text style={{ color: theme.colors.text.primary }}>
+          Error loading app: {error.message}
+        </Text>
       </View>
     );
   }
 
   if (!isReady) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>Loading...</Text>
+      <View style={{ 
+        flex: 1, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        backgroundColor: theme.colors.background 
+      }}>
+        <StatusBar 
+          barStyle={theme.isDark ? 'light-content' : 'dark-content'} 
+          backgroundColor={theme.colors.background}
+        />
+        <Text style={{ color: theme.colors.text.primary }}>Loading...</Text>
       </View>
     );
   }
 
   return (
+    <>
+      <StatusBar 
+        barStyle={theme.isDark ? 'light-content' : 'dark-content'} 
+        backgroundColor={theme.colors.background}
+      />
+      <ThemeSync />
+      <NavigationContainer>
+        <Navigation />
+      </NavigationContainer>
+    </>
+  );
+}
+
+function App() {
+  return (
     <ThemeProvider>
       <AuthProvider>
-        <NavigationContainer>
-          <Navigation />
-        </NavigationContainer>
+        <DIDProvider>
+          <SettingsProvider>
+            <AppContent />
+          </SettingsProvider>
+        </DIDProvider>
       </AuthProvider>
     </ThemeProvider>
   );

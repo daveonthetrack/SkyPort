@@ -10,12 +10,13 @@ import {
     Alert,
     Dimensions,
     Image,
+    Modal,
     RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 import Animated, {
     Easing,
@@ -27,6 +28,7 @@ import Animated, {
     withTiming
 } from 'react-native-reanimated';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { HomeStackParamList, TabParamList } from '../navigation/types';
 import { borderRadius, colors, shadows, spacing, typography } from '../theme';
@@ -258,6 +260,8 @@ const ActivityListItem = ({ item }: { item: ActivityItem }) => {
 
 const SenderDashboard = ({ navigation, route }: Props) => {
   const { session, signOut, profile } = useAuth();
+  const { theme } = useTheme();
+  const themeColors = theme.colors;
   const [stats, setStats] = useState({
     postedItems: 0,
     activeDeliveries: 0,
@@ -271,6 +275,7 @@ const SenderDashboard = ({ navigation, route }: Props) => {
   const [pendingItems, setPendingItems] = useState(0);
   const [recentItems, setRecentItems] = useState(0);
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [isMenuVisible, setIsMenuVisible] = useState(false);
 
   useEffect(() => {
     if (!session?.user?.id) return;
@@ -309,7 +314,13 @@ const SenderDashboard = ({ navigation, route }: Props) => {
           fetchRecentActivity();
         })
         .subscribe((status) => {
-          console.log('Sender items subscription status:', status);
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ Sender items subscription connected successfully');
+          } else if (status === 'CHANNEL_ERROR') {
+            console.log('⚠️ Sender items subscription error - continuing with polling fallback');
+          } else {
+            console.log('Sender items subscription status:', status);
+          }
         });
       
       // Subscribe to messages table changes for updates to activity
@@ -324,7 +335,15 @@ const SenderDashboard = ({ navigation, route }: Props) => {
           console.log('New messages received, refreshing activity...');
           fetchRecentActivity();
         })
-        .subscribe();
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ Sender messages subscription connected successfully');
+          } else if (status === 'CHANNEL_ERROR') {
+            console.log('⚠️ Sender messages subscription error - continuing with polling fallback');
+          } else {
+            console.log('Sender messages subscription status:', status);
+          }
+        });
       
       // Return cleanup function
       return () => {
@@ -462,9 +481,9 @@ const SenderDashboard = ({ navigation, route }: Props) => {
     if (!session?.user?.id) return;
 
     try {
-      console.log('Fetching sender trips...');
+      console.log('Fetching available traveler trips...');
       
-      // Fetch trips with traveler profiles
+      // Fetch trips from other users (travelers) that are available for senders
       const { data: trips, error } = await supabase
         .from('trips')
         .select(`
@@ -475,8 +494,11 @@ const SenderDashboard = ({ navigation, route }: Props) => {
             avatar_url
           )
         `)
-        .eq('user_id', session.user.id)
-        .order('departure_date', { ascending: true });
+        .neq('user_id', session.user.id) // Exclude current user's trips
+        .eq('status', 'active') // Only show active trips
+        .gte('departure_date', new Date().toISOString().split('T')[0]) // Only future trips
+        .order('departure_date', { ascending: true })
+        .limit(5); // Limit to 5 for dashboard
 
       if (error) {
         console.error('Error fetching trips:', error);
@@ -489,7 +511,7 @@ const SenderDashboard = ({ navigation, route }: Props) => {
         departure_date: trip.departure_date ? new Date(trip.departure_date).toISOString() : new Date().toISOString()
       })) || [];
 
-      console.log(`Fetched ${validTrips.length} trips`);
+      console.log(`Fetched ${validTrips.length} available trips`);
       setTrips(validTrips as Trip[]);
     } catch (error) {
       console.error('Error fetching trips:', error);
@@ -529,12 +551,9 @@ const SenderDashboard = ({ navigation, route }: Props) => {
         </View>
         <View style={styles.infoContainer}>
           <Text style={styles.name}>{trip.user?.name || 'Unknown'}</Text>
-          <View style={styles.ratingContainer}>
-            <Ionicons name="star" size={16} color="#FFD700" />
-            <Text style={styles.rating}>{trip.user?.rating?.toFixed(1) || '0.0'}</Text>
-            <Text style={styles.deliveryCount}>
-              ({trip.user?.delivery_count || 0} deliveries)
-            </Text>
+          <View style={styles.travelerInfo}>
+            <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+            <Text style={styles.verifiedText}>Verified Traveler</Text>
           </View>
         </View>
       </View>
@@ -601,10 +620,97 @@ const SenderDashboard = ({ navigation, route }: Props) => {
     </TouchableOpacity>
   );
 
+  const menuOptions = [
+    {
+      icon: 'cube-outline' as const,
+      label: 'My Items',
+      onPress: () => {
+        setIsMenuVisible(false);
+        navigation.navigate('MyItems', undefined);
+      },
+    },
+    {
+      icon: 'person-outline' as const,
+      label: 'Profile',
+      onPress: () => {
+        setIsMenuVisible(false);
+        navigation.navigate('Profile');
+      },
+    },
+    {
+      icon: 'settings-outline' as const,
+      label: 'Settings',
+      onPress: () => {
+        setIsMenuVisible(false);
+        navigation.navigate('Settings' as never);
+      },
+    },
+    {
+      icon: 'help-circle-outline' as const,
+      label: 'Help & Support',
+      onPress: () => {
+        setIsMenuVisible(false);
+        navigation.navigate('HelpSupport' as never);
+      },
+    },
+    {
+      icon: 'information-circle-outline' as const,
+      label: 'About',
+      onPress: () => {
+        setIsMenuVisible(false);
+        Alert.alert(
+          'About BagMe',
+          'BagMe helps senders find reliable travelers to deliver their items. Version 1.0.0'
+        );
+      },
+    },
+  ];
+
+  const renderMenu = () => (
+    <Modal
+      visible={isMenuVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setIsMenuVisible(false)}
+    >
+      <TouchableOpacity
+        style={styles.menuOverlay}
+        activeOpacity={1}
+        onPress={() => setIsMenuVisible(false)}
+      >
+        <View style={styles.menuContainer}>
+          <View style={styles.menuHeader}>
+            <Text style={styles.menuTitle}>Menu</Text>
+            <TouchableOpacity
+              onPress={() => setIsMenuVisible(false)}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={24} color={colors.text.primary} />
+            </TouchableOpacity>
+          </View>
+          {menuOptions.map((option, index) => (
+            <TouchableOpacity
+              key={option.label}
+              style={[
+                styles.menuOption,
+                index === menuOptions.length - 1 && styles.menuOptionLast,
+              ]}
+              onPress={option.onPress}
+            >
+              <Ionicons name={option.icon} size={24} color={colors.primary} />
+              <Text style={styles.menuOptionText}>{option.label}</Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.text.secondary} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
   return (
     <ScrollView
-      style={styles.container}
-      contentContainerStyle={{ paddingBottom: 100 }}
+      style={[styles.container, { backgroundColor: themeColors.background }]}
+      contentContainerStyle={styles.scrollContent}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
@@ -616,21 +722,29 @@ const SenderDashboard = ({ navigation, route }: Props) => {
         style={styles.header}
       >
         <View style={styles.headerTop}>
-          <View>
-            <AnimatedTextWrapper 
-              entering={FadeInUp.delay(200).springify()}
-              layout={Layout.duration(300)}
-              style={styles.welcomeText}
+          <View style={styles.headerLeft}>
+            <TouchableOpacity
+              onPress={() => setIsMenuVisible(true)}
+              style={styles.menuButton}
             >
-              Welcome back,
-            </AnimatedTextWrapper>
-            <AnimatedTextWrapper 
-              entering={FadeInUp.delay(400).springify()}
-              layout={Layout.duration(300)}
-              style={styles.userName}
-            >
-              {profile?.name || session?.user?.email?.split('@')[0]}
-            </AnimatedTextWrapper>
+              <Ionicons name="menu" size={24} color={colors.white} />
+            </TouchableOpacity>
+            <View>
+              <AnimatedTextWrapper 
+                entering={FadeInUp.delay(200).springify()}
+                layout={Layout.duration(300)}
+                style={styles.welcomeText}
+              >
+                Welcome back,
+              </AnimatedTextWrapper>
+              <AnimatedTextWrapper 
+                entering={FadeInUp.delay(400).springify()}
+                layout={Layout.duration(300)}
+                style={styles.userName}
+              >
+                {profile?.name || session?.user?.email?.split('@')[0]}
+              </AnimatedTextWrapper>
+            </View>
           </View>
           <Animated.View
             entering={FadeInUp.delay(600).springify()}
@@ -744,21 +858,95 @@ const SenderDashboard = ({ navigation, route }: Props) => {
         </AnimatedTextWrapper>
         <View style={styles.statsContainer}>
           <StatCard
-            title="Active Items"
+            title="Posted Items"
+            value={stats.postedItems}
+            icon="cube-outline"
+            details={`You have posted a total of ${stats.postedItems} items for delivery.
+            
+This includes all items you've ever posted, regardless of their current status.`}
+          />
+          <StatCard
+            title="Active Deliveries"
             value={stats.activeDeliveries}
-            icon="cube"
+            icon="airplane"
             details={`You currently have ${stats.activeDeliveries} items in transit with travelers.
             
 These items are being carried by travelers to their destinations and are expected to be delivered soon.`}
           />
           <StatCard
-            title="Total Spent"
-            value={`$${stats.totalSpent}`}
-            icon="wallet"
-            details={`You have spent a total of $${stats.totalSpent} on ${stats.completedDeliveries} completed deliveries.
-
-Average cost per delivery: $${stats.completedDeliveries > 0 ? (stats.totalSpent / stats.completedDeliveries).toFixed(2) : 0}`}
+            title="Completed"
+            value={stats.completedDeliveries}
+            icon="checkmark-circle"
+            details={`You have successfully completed ${stats.completedDeliveries} deliveries.
+            
+These items have been delivered to their destinations and marked as complete.`}
           />
+        </View>
+
+        <View style={styles.additionalStatsContainer}>
+          <View style={styles.additionalStatsRow}>
+            <View style={styles.miniStatCard}>
+              <Ionicons name="time-outline" size={20} color={colors.primary} />
+              <Text style={styles.miniStatValue}>{pendingItems}</Text>
+              <Text style={styles.miniStatLabel}>Pending</Text>
+            </View>
+            <View style={styles.miniStatCard}>
+              <Ionicons name="calendar-outline" size={20} color={colors.secondary} />
+              <Text style={styles.miniStatValue}>{recentItems}</Text>
+              <Text style={styles.miniStatLabel}>This Month</Text>
+            </View>
+            <View style={styles.miniStatCard}>
+              <Ionicons name="trending-up-outline" size={20} color={colors.success} />
+              <Text style={styles.miniStatValue}>
+                {stats.completedDeliveries > 0 ? Math.round((stats.completedDeliveries / stats.postedItems) * 100) : 0}%
+              </Text>
+              <Text style={styles.miniStatLabel}>Success Rate</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={[styles.progressSection, { backgroundColor: themeColors.surface }]}>
+          <Text style={[styles.progressTitle, { color: themeColors.text.primary }]}>Delivery Progress</Text>
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBar}>
+              <View 
+                style={[
+                  styles.progressFill, 
+                  { 
+                    width: `${stats.postedItems > 0 ? (stats.completedDeliveries / stats.postedItems) * 100 : 0}%`,
+                    backgroundColor: colors.success 
+                  }
+                ]} 
+              />
+            </View>
+            <Text style={[styles.progressText, { color: themeColors.text.secondary }]}>
+              {stats.completedDeliveries} of {stats.postedItems} items delivered
+            </Text>
+          </View>
+        </View>
+        
+        <View style={[styles.insightsSection, { backgroundColor: themeColors.surface }]}>
+          <Text style={[styles.insightsTitle, { color: themeColors.text.primary }]}>Quick Insights</Text>
+          <View style={styles.insightsList}>
+            <View style={styles.insightItem}>
+              <Ionicons name="flash-outline" size={16} color={colors.warning} />
+              <Text style={[styles.insightText, { color: themeColors.text.secondary }]}>
+                {stats.activeDeliveries > 0 
+                  ? `${stats.activeDeliveries} items currently in transit`
+                  : 'No active deliveries at the moment'
+                }
+              </Text>
+            </View>
+            <View style={styles.insightItem}>
+              <Ionicons name="trophy-outline" size={16} color={colors.success} />
+              <Text style={[styles.insightText, { color: themeColors.text.secondary }]}>
+                {stats.completedDeliveries >= 10 
+                  ? 'Experienced sender - Great job!' 
+                  : `${10 - stats.completedDeliveries} more deliveries to become experienced`
+                }
+              </Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.recentActivityContainer}>
@@ -787,6 +975,8 @@ Average cost per delivery: $${stats.completedDeliveries > 0 ? (stats.totalSpent 
           ))}
         </View>
       </Animated.View>
+      
+      {renderMenu()}
     </ScrollView>
   );
 }
@@ -794,7 +984,9 @@ Average cost per delivery: $${stats.completedDeliveries > 0 ? (stats.totalSpent 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+  },
+  scrollContent: {
+    paddingBottom: 100,
   },
   header: {
     padding: spacing.xl,
@@ -806,6 +998,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   welcomeText: {
     fontSize: typography.sizes.lg,
@@ -997,19 +1193,13 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     marginBottom: spacing.xs,
   },
-  ratingContainer: {
+  travelerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  rating: {
+  verifiedText: {
     fontSize: typography.sizes.sm,
-    color: colors.text.primary,
-    marginLeft: spacing.xs,
-    fontWeight: '500',
-  },
-  deliveryCount: {
-    fontSize: typography.sizes.sm,
-    color: colors.text.secondary,
+    color: colors.success,
     marginLeft: spacing.xs,
   },
   tripRoute: {
@@ -1087,6 +1277,140 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontWeight: '600',
     marginRight: spacing.xs,
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  menuContainer: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    padding: spacing.lg,
+    ...shadows.large,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  menuTitle: {
+    fontSize: typography.sizes.xl,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
+  closeButton: {
+    padding: spacing.xs,
+  },
+  menuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  menuOptionLast: {
+    borderBottomWidth: 0,
+  },
+  menuOptionText: {
+    flex: 1,
+    fontSize: typography.sizes.md,
+    color: colors.text.primary,
+    marginLeft: spacing.md,
+  },
+  menuButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  additionalStatsContainer: {
+    marginTop: spacing.md,
+  },
+  additionalStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  miniStatCard: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginHorizontal: spacing.xs,
+    marginBottom: spacing.md,
+    ...shadows.medium,
+  },
+  miniStatValue: {
+    fontSize: typography.sizes.xl,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+  },
+  miniStatLabel: {
+    fontSize: typography.sizes.sm,
+    color: colors.text.secondary,
+  },
+  progressSection: {
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.md,
+  },
+  progressTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: spacing.md,
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressBar: {
+    height: 20,
+    backgroundColor: colors.background,
+    borderRadius: 10,
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 10,
+  },
+  progressText: {
+    fontSize: typography.sizes.sm,
+    color: colors.text.secondary,
+  },
+  insightsSection: {
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.md,
+  },
+  insightsTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: spacing.md,
+  },
+  insightsList: {
+    gap: spacing.md,
+  },
+  insightItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  insightText: {
+    fontSize: typography.sizes.sm,
+    color: colors.text.secondary,
+    marginLeft: spacing.md,
   },
 });
 

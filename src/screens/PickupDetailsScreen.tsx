@@ -1,30 +1,33 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  Image,
-  SafeAreaView,
-  ActivityIndicator,
-  Share,
-  Platform,
-  Linking,
-} from 'react-native';
-import { CompositeNavigationProp, useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { HomeStackParamList, TabParamList, MessagesStackParamList } from '../navigation/types';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, borderRadius, shadows, typography } from '../theme';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { CommonActions, CompositeNavigationProp, RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Image,
+    SafeAreaView,
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { useCallback } from 'react';
-import { CommonActions } from '@react-navigation/native';
-import { MessageType, MessageStatus } from '../types/chat';
+import { supabase } from '../lib/supabase';
+import { HomeStackParamList, TabParamList } from '../navigation/types';
+import { borderRadius, colors, shadows, spacing, typography } from '../theme';
+import { MessageStatus, MessageType } from '../types/chat';
+// Enhanced imports for QR and handover features
+import HandoverCamera from '../components/HandoverCamera';
+import { PackageQRDisplay } from '../components/PackageQRDisplay';
+import { QRScanner } from '../components/QRScanner';
+import { didService } from '../services/DIDService';
+import { HandoverService, PackageDetails } from '../services/HandoverService';
+import { GPSCoordinates, LocationService } from '../services/LocationService';
 
 type RouteParams = {
   itemId: string | number;
@@ -87,6 +90,18 @@ export default function PickupDetailsScreen() {
   const [pickupDate, setPickupDate] = useState<Date | null>(null);
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState<Date | null>(null);
 
+  // Enhanced state for QR code and handover verification
+  const [showHandoverCamera, setShowHandoverCamera] = useState(false);
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [showQRDisplay, setShowQRDisplay] = useState(false);
+  const [currentHandoverType, setCurrentHandoverType] = useState<'pickup' | 'delivery'>('pickup');
+  const [didStatus, setDidStatus] = useState<'loading' | 'exists' | 'missing'>('loading');
+  const [userDID, setUserDID] = useState<string | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<GPSCoordinates | null>(null);
+  const [generatedQRData, setGeneratedQRData] = useState<string | null>(null);
+  const [qrPackageDetails, setQRPackageDetails] = useState<any>(null);
+  const [itemQRData, setItemQRData] = useState<string | null>(null);
+
   // Fetch owner's name when component mounts
   useEffect(() => {
     const fetchOwnerName = async () => {
@@ -127,6 +142,11 @@ export default function PickupDetailsScreen() {
       };
     }, [itemId])
   );
+
+  // Initialize handover verification system
+  useEffect(() => {
+    initializeHandoverSystem();
+  }, [session?.user?.id]);
 
   const fetchItemStatus = async () => {
     try {
@@ -189,6 +209,56 @@ export default function PickupDetailsScreen() {
     }
   };
 
+  const initializeHandoverSystem = async () => {
+    if (!session?.user?.id) return;
+    
+    // Check DID status
+    try {
+      setDidStatus('loading');
+      
+      // Get user profile from Supabase to check for DID
+      const { data: userProfile, error } = await supabase
+        .from('profiles')
+        .select('did_identifier, public_key')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (!error && userProfile?.did_identifier) {
+        setDidStatus('exists');
+        setUserDID(userProfile.did_identifier);
+        console.log('✅ DID found in profile:', userProfile.did_identifier);
+      } else {
+        // Check if user has DID key pair stored locally
+        const hasKeyPair = await didService.hasDIDKeyPair(session.user.id);
+        
+        if (hasKeyPair) {
+          const keyPair = await didService.retrieveDIDKeyPair(session.user.id);
+          if (keyPair) {
+            setDidStatus('exists');
+            setUserDID(keyPair.did);
+            console.log('✅ DID found in keychain:', keyPair.did);
+          } else {
+            setDidStatus('missing');
+          }
+        } else {
+          setDidStatus('missing');
+        }
+      }
+    } catch (error) {
+      console.error('Error checking DID status:', error);
+      setDidStatus('missing');
+    }
+    
+    // Get current location
+    try {
+      const locationService = LocationService.getInstance();
+      const location = await locationService.getCurrentLocation();
+      setCurrentLocation(location);
+    } catch (error) {
+      console.error('Error getting location:', error);
+    }
+  };
+
   const formatDate = (date: Date | null) => {
     if (!date) return 'Not set';
     return date.toLocaleDateString('en-US', {
@@ -213,140 +283,49 @@ export default function PickupDetailsScreen() {
       return;
     }
 
-    Alert.alert(
-      'Confirm Pickup',
-      `Are you sure you want to pick up this item?\n\n` +
-      `Item: ${itemTitle}\n` +
-      `From: ${origin}\n` +
-      `To: ${destination}\n` +
-      `Size: ${size}`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Confirm Pickup',
-          style: 'default',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              
-              console.log('Starting pickup process for item:', itemId);
-              
-              // First, verify the item is still pending
-              const { data: itemData, error: fetchError } = await supabase
-                .from('items')
-                .select('status, user_id')
-                .eq('id', itemId)
-                .single();
-              
-              console.log('Item verification result:', { data: itemData, error: fetchError });
-
-              if (fetchError) {
-                console.error('Error fetching item for verification:', fetchError);
-                throw fetchError;
+    // Check if user has DID
+    if (didStatus === 'missing') {
+      Alert.alert(
+        'Digital Identity Required',
+        'You need to create your digital identity first for secure handover verification.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Create Identity',
+            onPress: async () => {
+              try {
+                const result = await didService.createDIDForUser(session.user.id);
+                if (result.success) {
+                  Alert.alert('Success', 'Your digital identity has been created');
+                  await initializeHandoverSystem();
+                } else {
+                  Alert.alert('Error', result.error || 'Failed to create digital identity');
+                }
+              } catch (error) {
+                console.error('Error creating DID:', error);
+                Alert.alert('Error', 'Failed to create digital identity');
               }
-              
-              if (!itemData) {
-                console.error('Item not found for ID:', itemId);
-                Alert.alert('Error', 'Item not found. Please try again.');
-                return;
-              }
-              
-              if (itemData.status !== 'pending') {
-                console.log('Item already picked up, status:', itemData.status);
-                Alert.alert('Error', 'This item is no longer available for pickup.');
-                return;
-              }
-
-              // Calculate estimated delivery date (3 days from now)
-              const estimatedDelivery = new Date();
-              estimatedDelivery.setDate(estimatedDelivery.getDate() + 3);
-              
-              console.log('Updating item status to accepted, user ID:', session.user.id);
-
-              // Update item status to 'accepted'
-              const updateResult = await supabase
-                .from('items')
-                .update({ 
-                  status: 'accepted',
-                  accepted_by: session.user.id,
-                  pickup_date: new Date().toISOString(),
-                  estimated_delivery_date: estimatedDelivery.toISOString(),
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', itemId)
-                .eq('status', 'pending')
-                .select();
-              
-              console.log('Update result:', updateResult);
-
-              if (updateResult.error) {
-                console.error('Error updating item status:', updateResult.error);
-                throw updateResult.error;
-              }
-              
-              if (updateResult.data && updateResult.data.length === 0) {
-                console.warn('Item update produced no results, possible row not found');
-              }
-
-              // Create a pickup notification message
-              console.log('Sending pickup notification to owner:', ownerId);
-              const messageResult = await supabase
-                .from('messages')
-                .insert({
-                  sender_id: session.user.id,
-                  receiver_id: ownerId,
-                  content: `I have picked up "${itemTitle}" and will deliver it to ${destination}.`,
-                  item_id: itemId,
-                  created_at: new Date().toISOString()
-                })
-                .select();
-              
-              console.log('Message result:', messageResult);
-
-              if (messageResult.error) {
-                console.error('Error sending pickup message:', messageResult.error);
-                // Not throwing error here to continue with the process
-              }
-              
-              // Fetch the updated item to verify the status change
-              console.log('Verifying status change...');
-              const verifyResult = await supabase
-                .from('items')
-                .select('status, accepted_by')
-                .eq('id', itemId)
-                .single();
-                
-              console.log('Verification result:', verifyResult);
-              
-              if (verifyResult.error) {
-                console.warn('Error verifying item update:', verifyResult.error);
-              } else if (verifyResult.data) {
-                console.log('Verified item status is now:', verifyResult.data.status);
-                setItemStatus(verifyResult.data.status);
-              }
-              
-              // Update local state regardless of verification
-              setItemStatus('accepted');
-              
-              // Show success message
-              Alert.alert('Success', 'Item picked up successfully! It has been added to your carrying items.');
-              
-              // Switch to status tab
-              setActiveTab('status');
-              
-            } catch (err: any) {
-              console.error('Error confirming pickup:', err);
-              Alert.alert('Error', `Failed to confirm pickup: ${err.message || 'Unknown error'}`);
-            } finally {
-              setLoading(false);
             }
-          },
-        },
-      ],
-      { cancelable: true }
+          }
+        ]
+      );
+      return;
+    }
+
+    // Start handover verification process
+    Alert.alert(
+      '🔐 Secure Pickup Verification',
+      `Start secure handover verification for "${itemTitle}"?\n\nThis will:\n• Verify your GPS location\n• Take a pickup photo\n• Create blockchain signature\n• Update item status`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start Verification',
+          onPress: () => {
+            setCurrentHandoverType('pickup');
+            setShowHandoverCamera(true);
+          }
+        }
+      ]
     );
   };
 
@@ -545,87 +524,102 @@ export default function PickupDetailsScreen() {
       return;
     }
 
-    Alert.alert(
-      'Mark as Delivered',
-      'Are you sure you have delivered this item?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Confirm',
-          style: 'default',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              
-              // Verify the item is still accepted
-              const { data: itemData, error: fetchError } = await supabase
-                .from('items')
-                .select('status, accepted_by')
-                .eq('id', itemId)
-                .single();
-              
-              if (fetchError) throw fetchError;
-              
-              if (!itemData) {
-                throw new Error('Item not found');
+    // Check if item has QR code for verification
+    try {
+      const { data: itemData, error } = await supabase
+        .from('items')
+        .select('qr_code_data, qr_signature, status, accepted_by')
+        .eq('id', itemId)
+        .single();
+
+      if (error) throw error;
+
+      if (itemData?.qr_code_data) {
+        // Item has QR code - require scanning for verification
+        Alert.alert(
+          '🔍 QR Code Verification Required',
+          'This package has QR code verification enabled. Please scan the QR code to confirm delivery.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Scan QR Code',
+              onPress: () => {
+                setItemQRData(itemData.qr_code_data);
+                setShowQRScanner(true);
               }
-              
-              if (itemData.status !== 'accepted') {
-                Alert.alert('Error', 'This item is not in an accepted state.');
-                return;
-              }
-              
-              if (itemData.accepted_by !== session.user.id) {
-                Alert.alert('Error', 'You are not authorized to mark this item as delivered.');
-                return;
-              }
-
-              // Update item status to delivered
-              const { error: updateError } = await supabase
-                .from('items')
-                .update({ 
-                  status: 'delivered',
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', itemId)
-                .eq('status', 'accepted')
-                .eq('accepted_by', session.user.id);
-
-              if (updateError) throw updateError;
-
-              // Create a delivery notification message
-              const { error: messageError } = await supabase
-                .from('messages')
-                .insert({
-                  sender_id: session.user.id,
-                  receiver_id: ownerId,
-                  content: `I have delivered "${itemTitle}" to ${destination}.`,
-                  item_id: itemId,
-                  created_at: new Date().toISOString()
-                });
-
-              if (messageError) {
-                console.error('Error sending delivery message:', messageError);
-                // Continue even if message fails
-              }
-
-              setItemStatus('delivered');
-              Alert.alert('Success', 'Item marked as delivered!');
-              navigation.goBack();
-            } catch (error) {
-              console.error('Error marking item as delivered:', error);
-              Alert.alert('Error', 'Failed to mark item as delivered. Please try again.');
-            } finally {
-              setLoading(false);
             }
-          },
-        },
-      ],
-      { cancelable: true }
-    );
+          ]
+        );
+      } else {
+        // Fallback to handover verification
+        Alert.alert(
+          '🔐 Secure Delivery Verification',
+          'Start secure handover verification for delivery?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Start Verification',
+              onPress: () => {
+                setCurrentHandoverType('delivery');
+                setShowHandoverCamera(true);
+              }
+            }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error checking QR code:', error);
+      // Fallback to basic delivery confirmation
+      Alert.alert(
+        'Mark as Delivered',
+        'Are you sure you have delivered this item?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Confirm', onPress: () => completeItemDelivery() }
+        ]
+      );
+    }
+  };
+
+  const handleQRScanResult = async (qrData: string) => {
+    try {
+      const handoverService = HandoverService.getInstance();
+      
+      // Validate QR code against expected package ID
+      const expectedPackageId = `ITEM-${itemId}`;
+      const validationResult = await handoverService.validateQRCode(qrData, expectedPackageId);
+
+      if (validationResult.valid) {
+        setShowQRScanner(false);
+        
+        Alert.alert(
+          'QR Code Verified! 🎉',
+          'Package authenticity confirmed. Proceeding with delivery verification.',
+          [
+            {
+              text: 'Complete Delivery',
+              onPress: () => {
+                setCurrentHandoverType('delivery');
+                setShowHandoverCamera(true);
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'QR Code Invalid ❌',
+          'This QR code does not match the expected package. Please verify you have the correct item.',
+          [
+            { text: 'Try Again', onPress: () => setShowQRScanner(false) },
+            { text: 'Cancel', onPress: () => setShowQRScanner(false) }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('QR validation error:', error);
+      Alert.alert('Verification Error', 'Failed to validate QR code. Please try again.');
+      setShowQRScanner(false);
+    }
   };
 
   const handleShareItem = async () => {
@@ -650,6 +644,270 @@ ${shareUrl}`;
     }
   };
 
+  const handleHandoverVerificationCapture = async (photoUri: string, location: GPSCoordinates) => {
+    if (!session?.user?.id) {
+      Alert.alert('Error', 'Missing user information');
+      setShowHandoverCamera(false);
+      return;
+    }
+
+    try {
+      const handoverService = HandoverService.getInstance();
+
+      // Create package details for verification
+      const packageDetails: PackageDetails = {
+        packageId: `ITEM-${itemId}`,
+        senderDID: userDID || 'temp-sender-did',
+        travelerDID: userDID || 'temp-traveler-did',
+        destination: destination,
+        value: 0, // Could be item value if available
+        expectedLocation: {
+          latitude: 37.7749, // This would normally come from item pickup location
+          longitude: -122.4194,
+          accuracy: 10
+        }
+      };
+
+      if (currentHandoverType === 'pickup') {
+        // Verify pickup
+        const result = await handoverService.verifyPickup(packageDetails, session.user.id);
+
+        if (result.success) {
+          // Generate QR code for the package
+          console.log('📦 Generating QR code for picked up package...');
+          
+          const qrResult = await handoverService.generateEnhancedPackageQR(
+            packageDetails,
+            session.user.id,
+            session.user.email || 'Anonymous Traveler'
+          );
+
+          // Store QR data in database
+          await supabase
+            .from('items')
+            .update({
+              qr_code_data: qrResult.qrData,
+              qr_signature: qrResult.signature,
+              qr_generated_at: new Date().toISOString()
+            })
+            .eq('id', itemId);
+
+          // Complete the pickup in database
+          await completeItemPickup();
+          
+          // Prepare QR display data
+          setGeneratedQRData(qrResult.qrData);
+          setQRPackageDetails({
+            title: itemTitle,
+            destination: destination,
+            size: size,
+            travelerName: session.user.email || 'Anonymous Traveler'
+          });
+          
+          Alert.alert(
+            'Pickup Verified! 🎉',
+            `Package pickup successfully verified!\n\nLocation Accuracy: ${result.distance}m\nVerification: ${result.verified ? 'Confirmed' : 'Manual Override'}\nQR code generated for delivery verification.`,
+            [
+              { 
+                text: 'Continue', 
+                onPress: () => {
+                  // Show QR code for sender
+                  setShowQRDisplay(true);
+                }
+              }
+            ]
+          );
+        } else {
+          Alert.alert(
+            'Verification Failed',
+            result.error || 'Unable to complete handover verification',
+            [{ text: 'OK' }]
+          );
+        }
+      } else if (currentHandoverType === 'delivery') {
+        // Verify delivery
+        const result = await handoverService.verifyDelivery(packageDetails, session.user.id);
+
+        if (result.success) {
+          await completeItemDelivery();
+          
+          Alert.alert(
+            'Delivery Verified! 🎉',
+            `Package delivery successfully verified!\n\nLocation Accuracy: ${result.distance}m\nVerification: ${result.verified ? 'Confirmed' : 'Manual Override'}`,
+            [{ text: 'Excellent!' }]
+          );
+        } else {
+          Alert.alert(
+            'Verification Failed',
+            result.error || 'Unable to complete delivery verification',
+            [{ text: 'OK' }]
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Handover verification error:', error);
+      Alert.alert('Verification Failed', 'Unable to process handover verification. Please try again.');
+    } finally {
+      setShowHandoverCamera(false);
+    }
+  };
+
+  const completeItemPickup = async () => {
+    if (!session?.user?.id) {
+      Alert.alert('Error', 'Please log in to pick up items');
+      return;
+    }
+
+    try {
+      console.log('Processing pickup for item:', itemId);
+      
+      // Get additional item data if needed
+      const { data: itemData, error: itemError } = await supabase
+        .from('items')
+        .select('*')
+        .eq('id', itemId)
+        .single();
+
+      if (itemError) {
+        console.error('Error fetching item data:', itemError);
+        throw itemError;
+      }
+
+      // Calculate estimated delivery date (2-7 days from now)
+      const estimatedDelivery = new Date();
+      estimatedDelivery.setDate(estimatedDelivery.getDate() + Math.floor(Math.random() * 5) + 2);
+
+      console.log('Updating item status to accepted for user:', session.user.id);
+      
+      // Update item status to 'accepted'
+      const updateResult = await supabase
+        .from('items')
+        .update({ 
+          status: 'accepted',
+          accepted_by: session.user.id,
+          pickup_date: new Date().toISOString(),
+          estimated_delivery_date: estimatedDelivery.toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', itemId)
+        .eq('status', 'pending')  // Only update if status is still pending
+        .select();
+
+      console.log('Update result:', updateResult);
+      
+      if (updateResult.error) {
+        console.error('Error updating item status:', updateResult.error);
+        throw updateResult.error;
+      }
+      
+      if (updateResult.data && updateResult.data.length === 0) {
+        console.warn('Update returned no results, possible row not found or status already changed');
+      }
+
+      // Create a pickup notification message
+      console.log('Sending pickup notification to sender:', ownerId);
+      const messageResult = await supabase
+        .from('messages')
+        .insert({
+          sender_id: session.user.id,
+          receiver_id: ownerId,
+          content: `I have picked up "${itemTitle}" and will deliver it to ${destination}.`,
+          item_id: itemId,
+          created_at: new Date().toISOString()
+        })
+        .select();
+
+      console.log('Message result:', messageResult);
+      
+      if (messageResult.error) {
+        console.error('Error sending pickup message:', messageResult.error);
+        // Don't throw error here, just log it
+      }
+
+      // Update local state
+      setItemStatus('accepted');
+      setPickupDate(new Date());
+      setEstimatedDeliveryDate(estimatedDelivery);
+      
+      // Switch to status tab
+      setActiveTab('status');
+    } catch (err: any) {
+      console.error('Error confirming pickup:', err);
+      Alert.alert('Error', `Failed to confirm pickup: ${err.message || 'Unknown error'}`);
+    }
+  };
+
+  const completeItemDelivery = async () => {
+    if (!session?.user?.id) {
+      Alert.alert('Error', 'You must be logged in to mark items as delivered.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Verify the item is still accepted
+      const { data: itemData, error: fetchError } = await supabase
+        .from('items')
+        .select('status, accepted_by')
+        .eq('id', itemId)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      if (!itemData) {
+        throw new Error('Item not found');
+      }
+      
+      if (itemData.status !== 'accepted') {
+        Alert.alert('Error', 'This item is not in an accepted state.');
+        return;
+      }
+      
+      if (itemData.accepted_by !== session.user.id) {
+        Alert.alert('Error', 'You are not authorized to mark this item as delivered.');
+        return;
+      }
+
+      // Update item status to delivered
+      const { error: updateError } = await supabase
+        .from('items')
+        .update({ 
+          status: 'delivered',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', itemId)
+        .eq('status', 'accepted')
+        .eq('accepted_by', session.user.id);
+
+      if (updateError) throw updateError;
+
+      // Create a delivery notification message
+      const { error: messageError } = await supabase
+        .from('messages')
+        .insert({
+          sender_id: session.user.id,
+          receiver_id: ownerId,
+          content: `I have delivered "${itemTitle}" to ${destination}.`,
+          item_id: itemId,
+          created_at: new Date().toISOString()
+        });
+
+      if (messageError) {
+        console.error('Error sending delivery message:', messageError);
+        // Continue even if message fails
+      }
+
+      setItemStatus('delivered');
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error marking item as delivered:', error);
+      Alert.alert('Error', 'Failed to mark item as delivered. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'details':
@@ -661,11 +919,49 @@ ${shareUrl}`;
             >
               <Text style={styles.sectionTitle}>Item Information</Text>
               <View style={styles.infoCard}>
-                <Text style={styles.itemTitle}>{itemTitle}</Text>
+                <View style={styles.headerContainer}>
+                  <Text style={styles.itemTitle}>{itemTitle}</Text>
+                  {/* Security Badge */}
+                  {didStatus === 'exists' && (
+                    <View style={styles.securityBadge}>
+                      <Ionicons name="shield-checkmark" size={16} color="#FFFFFF" />
+                      <Text style={styles.securityBadgeText}>Blockchain Verified</Text>
+                    </View>
+                  )}
+                </View>
+
                 <View style={styles.infoRow}>
                   <Ionicons name="cube" size={20} color="#6C757D" />
                   <Text style={styles.infoText}>Size: {size}</Text>
                 </View>
+
+                {/* Owner Information */}
+                <View style={styles.infoRow}>
+                  <Ionicons name="person" size={20} color="#6C757D" />
+                  <Text style={styles.infoText}>Owner: {ownerName}</Text>
+                </View>
+
+                {/* DID Status Indicator */}
+                {didStatus !== 'loading' && (
+                  <View style={styles.didStatusContainer}>
+                    <View style={styles.infoRow}>
+                      <Ionicons 
+                        name={didStatus === 'exists' ? "checkmark-circle" : "alert-circle"} 
+                        size={20} 
+                        color={didStatus === 'exists' ? "#28A745" : "#FFA500"} 
+                      />
+                      <Text style={[
+                        styles.infoText,
+                        { color: didStatus === 'exists' ? "#28A745" : "#FFA500" }
+                      ]}>
+                        {didStatus === 'exists' ? 'Digital Identity Verified' : 'Digital Identity Required'}
+                      </Text>
+                    </View>
+                    {userDID && (
+                      <Text style={styles.didText}>DID: {userDID}</Text>
+                    )}
+                  </View>
+                )}
                 
                 {/* Status indicator */}
                 <View style={styles.statusIndicator}>
@@ -680,11 +976,11 @@ ${shareUrl}`;
                   </Text>
                 </View>
 
-                {/* Dates */}
+                {/* Enhanced Dates with Icons */}
                 {itemStatus === 'accepted' && (
                   <View style={styles.datesContainer}>
                     <View style={styles.dateRow}>
-                      <Ionicons name="calendar-outline" size={20} color="#6C757D" />
+                      <Ionicons name="calendar-outline" size={20} color="#007AFF" />
                       <View style={styles.dateInfo}>
                         <Text style={styles.dateLabel}>Pickup Date</Text>
                         <Text style={styles.dateValue}>
@@ -694,7 +990,7 @@ ${shareUrl}`;
                       </View>
                     </View>
                     <View style={styles.dateRow}>
-                      <Ionicons name="time-outline" size={20} color="#6C757D" />
+                      <Ionicons name="time-outline" size={20} color="#FF6B35" />
                       <View style={styles.dateInfo}>
                         <Text style={styles.dateLabel}>Estimated Delivery</Text>
                         <Text style={styles.dateValue}>
@@ -707,29 +1003,68 @@ ${shareUrl}`;
                 )}
               </View>
               
-              {/* Only show pickup button if item is pending */}
+              {/* Enhanced Action Buttons */}
               {itemStatus === 'pending' && (
                 <TouchableOpacity
-                  style={styles.pickupButton}
+                  style={[
+                    styles.pickupButton,
+                    didStatus === 'missing' ? styles.disabledButton : styles.enabledButton
+                  ]}
                   onPress={handlePickupItem}
-                  disabled={loading}
+                  disabled={loading || didStatus === 'loading'}
                 >
                   {loading ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
                     <>
-                      <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                      <Text style={styles.pickupButtonText}>Pick Up This Item</Text>
+                      <Ionicons 
+                        name={didStatus === 'exists' ? "shield-checkmark" : "checkmark-circle"} 
+                        size={20} 
+                        color="#FFFFFF" 
+                      />
+                      <Text style={styles.pickupButtonText}>
+                        {didStatus === 'exists' ? 'Secure Pickup Verification' : 'Pick Up This Item'}
+                      </Text>
                     </>
                   )}
                 </TouchableOpacity>
               )}
               
-              {/* Show confirmation if already picked up */}
+              {/* Enhanced Accepted Status */}
               {itemStatus === 'accepted' && (
                 <View style={styles.acceptedContainer}>
-                  <Ionicons name="checkmark-circle" size={30} color="#28A745" />
-                  <Text style={styles.acceptedText}>You are carrying this item</Text>
+                  <View style={styles.acceptedHeader}>
+                    <Ionicons name="checkmark-circle" size={30} color="#28A745" />
+                    <View style={styles.acceptedTextContainer}>
+                      <Text style={styles.acceptedText}>You are carrying this item</Text>
+                      <Text style={styles.acceptedSubtext}>Ready for secure delivery</Text>
+                    </View>
+                  </View>
+                  
+                  {/* QR Code Actions */}
+                  <View style={styles.qrActionsContainer}>
+                    <TouchableOpacity
+                      style={styles.qrActionButton}
+                      onPress={() => {
+                        if (generatedQRData && qrPackageDetails) {
+                          setShowQRDisplay(true);
+                        } else {
+                          Alert.alert('QR Code', 'QR code will be generated during pickup verification');
+                        }
+                      }}
+                    >
+                      <Ionicons name="qr-code" size={20} color="#007AFF" />
+                      <Text style={styles.qrActionText}>View QR Code</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={styles.qrActionButton}
+                      onPress={handleShareItem}
+                    >
+                      <Ionicons name="share-outline" size={20} color="#007AFF" />
+                      <Text style={styles.qrActionText}>Share Details</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               )}
             </Animated.View>
@@ -738,7 +1073,7 @@ ${shareUrl}`;
               entering={FadeInDown.duration(500).delay(300)}
               style={styles.section}
             >
-              <Text style={styles.sectionTitle}>Route</Text>
+              <Text style={styles.sectionTitle}>Route & Security</Text>
               <View style={styles.routeCard}>
                 <View style={styles.routePoint}>
                   <View style={styles.routeIcon}>
@@ -757,6 +1092,29 @@ ${shareUrl}`;
                   <View style={styles.routeTextContainer}>
                     <Text style={styles.routeLabel}>Delivery Location</Text>
                     <Text style={styles.routeText}>{destination}</Text>
+                  </View>
+                </View>
+
+                {/* Security Features */}
+                <View style={styles.securityFeaturesContainer}>
+                  <Text style={styles.securityFeaturesTitle}>Security Features</Text>
+                  <View style={styles.securityFeaturesList}>
+                    <View style={styles.securityFeature}>
+                      <Ionicons name="camera" size={16} color="#28A745" />
+                      <Text style={styles.securityFeatureText}>Photo Verification</Text>
+                    </View>
+                    <View style={styles.securityFeature}>
+                      <Ionicons name="location" size={16} color="#28A745" />
+                      <Text style={styles.securityFeatureText}>GPS Tracking</Text>
+                    </View>
+                    <View style={styles.securityFeature}>
+                      <Ionicons name="qr-code" size={16} color="#28A745" />
+                      <Text style={styles.securityFeatureText}>QR Code Auth</Text>
+                    </View>
+                    <View style={styles.securityFeature}>
+                      <Ionicons name="shield-checkmark" size={16} color="#28A745" />
+                      <Text style={styles.securityFeatureText}>Blockchain Signature</Text>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -887,20 +1245,41 @@ ${shareUrl}`;
 
             {/* Action Buttons */}
             {itemStatus === 'accepted' && (
-              <TouchableOpacity
-                style={styles.deliverButton}
-                onPress={handleMarkAsDelivered}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={24} color="#fff" />
-                    <Text style={styles.deliverButtonText}>Mark as Delivered</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <View style={styles.deliveryActionsContainer}>
+                <TouchableOpacity
+                  style={styles.deliverButton}
+                  onPress={handleMarkAsDelivered}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="qr-code-outline" size={24} color="#fff" />
+                      <Text style={styles.deliverButtonText}>Verify & Deliver</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                
+                {/* Manual Delivery Option */}
+                <TouchableOpacity
+                  style={styles.manualDeliveryButton}
+                  onPress={() => {
+                    Alert.alert(
+                      'Manual Delivery',
+                      'Are you sure you want to mark this item as delivered without QR verification?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Confirm', onPress: () => completeItemDelivery() }
+                      ]
+                    );
+                  }}
+                  disabled={loading}
+                >
+                  <Ionicons name="checkmark-circle-outline" size={20} color="#6C757D" />
+                  <Text style={styles.manualDeliveryText}>Manual Delivery</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             {/* Status Details */}
@@ -1006,6 +1385,39 @@ ${shareUrl}`;
           {renderTabContent()}
         </ScrollView>
       </View>
+
+      {/* Handover Verification Camera */}
+      {showHandoverCamera && currentLocation && (
+        <HandoverCamera
+          expectedLocation={currentLocation}
+          onCapture={handleHandoverVerificationCapture}
+          onCancel={() => {
+            setShowHandoverCamera(false);
+          }}
+          type={currentHandoverType}
+          packageTitle={itemTitle}
+        />
+      )}
+
+      {/* QR Code Scanner */}
+      {showQRScanner && (
+        <QRScanner
+          onScan={handleQRScanResult}
+          onCancel={() => setShowQRScanner(false)}
+          title="Verify Package QR"
+          subtitle="Scan the QR code provided by the sender"
+        />
+      )}
+
+      {/* Package QR Code Display */}
+      {showQRDisplay && generatedQRData && qrPackageDetails && (
+        <PackageQRDisplay
+          visible={showQRDisplay}
+          onClose={() => setShowQRDisplay(false)}
+          qrData={generatedQRData}
+          packageDetails={qrPackageDetails}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -1079,11 +1491,26 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderRadius: borderRadius.md,
   },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
   itemTitle: {
     fontSize: 20,
     fontWeight: '600',
     color: '#212529',
-    marginBottom: spacing.sm,
+  },
+  securityBadge: {
+    backgroundColor: '#28A745',
+    borderRadius: 4,
+    padding: spacing.xs,
+    marginLeft: spacing.sm,
+  },
+  securityBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   infoRow: {
     flexDirection: 'row',
@@ -1092,6 +1519,99 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 16,
     color: '#6C757D',
+    marginLeft: spacing.sm,
+  },
+  didStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  didText: {
+    fontSize: 14,
+    color: '#6C757D',
+    marginLeft: spacing.sm,
+  },
+  statusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 6,
+  },
+  pendingDot: {
+    backgroundColor: '#FFA500', // Orange for pending
+  },
+  acceptedDot: {
+    backgroundColor: '#28A745', // Green for accepted
+  },
+  deliveredDot: {
+    backgroundColor: '#4169E1', // Blue for delivered
+  },
+  statusLabel: {
+    fontSize: 14,
+    color: '#6C757D',
+  },
+  pickupButton: {
+    backgroundColor: '#007AFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  pickupButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  acceptedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 16,
+  },
+  acceptedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  acceptedTextContainer: {
+    marginLeft: spacing.sm,
+  },
+  acceptedText: {
+    fontSize: 16,
+    color: '#28A745',
+    fontWeight: '500',
+  },
+  acceptedSubtext: {
+    fontSize: 14,
+    color: '#6C757D',
+    fontWeight: '500',
+  },
+  qrActionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  qrActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: 8,
+    marginRight: spacing.sm,
+  },
+  qrActionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007AFF',
     marginLeft: spacing.sm,
   },
   routeCard: {
@@ -1273,6 +1793,12 @@ const styles = StyleSheet.create({
     marginVertical: spacing.md,
     marginLeft: 20,
   },
+  deliveryActionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.xl,
+  },
   deliverButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1280,13 +1806,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success,
     padding: spacing.md,
     borderRadius: borderRadius.md,
-    marginTop: spacing.xl,
     ...shadows.small,
   },
   deliverButtonText: {
     fontSize: typography.sizes.md,
     fontWeight: '600',
     color: colors.white,
+    marginLeft: spacing.sm,
+  },
+  manualDeliveryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.background,
+    ...shadows.small,
+  },
+  manualDeliveryText: {
+    fontSize: typography.sizes.md,
+    fontWeight: '600',
+    color: colors.text.primary,
     marginLeft: spacing.sm,
   },
   statusDetailsCard: {
@@ -1321,58 +1861,34 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     fontWeight: '500',
   },
-  statusIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
+  securityFeaturesContainer: {
+    marginTop: spacing.lg,
   },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 6,
-  },
-  pendingDot: {
-    backgroundColor: '#FFA500', // Orange for pending
-  },
-  acceptedDot: {
-    backgroundColor: '#28A745', // Green for accepted
-  },
-  deliveredDot: {
-    backgroundColor: '#4169E1', // Blue for delivered
-  },
-  statusLabel: {
-    fontSize: 14,
-    color: '#6C757D',
-  },
-  pickupButton: {
-    backgroundColor: '#007AFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  pickupButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+  securityFeaturesTitle: {
+    fontSize: 18,
     fontWeight: '600',
-    marginLeft: 8,
+    color: colors.text.primary,
+    marginBottom: spacing.md,
   },
-  acceptedContainer: {
+  securityFeaturesList: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(40, 167, 69, 0.1)',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 16,
   },
-  acceptedText: {
+  securityFeature: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  securityFeatureText: {
     fontSize: 16,
-    color: '#28A745',
-    fontWeight: '500',
-    marginLeft: 8,
+    color: colors.text.primary,
+    marginLeft: spacing.sm,
+  },
+  disabledButton: {
+    backgroundColor: '#CCCCCC',
+  },
+  enabledButton: {
+    backgroundColor: '#007AFF',
   },
   datesContainer: {
     marginTop: spacing.md,

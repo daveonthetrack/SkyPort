@@ -44,9 +44,18 @@ export type Trip = {
   origin: string;
   destination: string;
   departure_date: string;
+  return_date?: string | null;
   created_at: string;
   updated_at: string;
   capacity: 'small' | 'medium' | 'large';
+  status?: 'pending' | 'accepted' | 'completed';
+  is_verified?: boolean;
+  verification_method?: string;
+  verification_image_url?: string;
+  pickup_date?: string;
+  delivery_date?: string;
+  estimated_delivery_date?: string;
+  trip_type?: 'one-way' | 'round-trip';
   user?: {
     id: string;
     name: string;

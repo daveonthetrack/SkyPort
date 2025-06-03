@@ -1,24 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/types';
-import { supabase } from '../lib/supabase';
-import { colors, spacing } from '../theme';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import AuthBackground from '../components/AuthBackground';
+import { supabase } from '../lib/supabase';
+import { RootStackParamList } from '../navigation/types';
+import { colors, spacing } from '../theme';
 
 type SignUpScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignUp'>;
 
@@ -97,7 +97,31 @@ export default function SignUpScreen() {
         [{ text: 'OK', onPress: () => navigation.navigate('SignIn') }]
       );
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'An error occurred');
+      console.error('Sign up error:', error);
+      
+      // Handle specific error types
+      if (error.message?.includes('rate_limit') || error.message?.includes('too_many_requests')) {
+        Alert.alert(
+          'Rate Limit Exceeded',
+          'Too many sign up attempts. Please wait a few minutes before trying again.\n\nThis helps prevent spam and keeps our service secure.',
+          [{ text: 'OK' }]
+        );
+      } else if (error.message?.includes('email_already_registered') || error.message?.includes('already_registered')) {
+        Alert.alert(
+          'Email Already Registered',
+          'This email is already registered. Try signing in instead.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign In', onPress: () => navigation.navigate('SignIn') }
+          ]
+        );
+      } else if (error.message?.includes('invalid_email')) {
+        Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      } else if (error.message?.includes('weak_password')) {
+        Alert.alert('Weak Password', 'Password should be at least 6 characters long.');
+      } else {
+        Alert.alert('Error', error.message || 'An error occurred during sign up. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

@@ -1,21 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
-import { useTheme } from '../contexts/ThemeContext';
-import AuthBackground from '../components/AuthBackground';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import AuthBackground from '../components/AuthBackground';
+import { useTheme } from '../contexts/ThemeContext';
+import { supabase } from '../lib/supabase';
 import { RootStackParamList } from '../navigation/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ResetPassword'>;
@@ -88,43 +88,45 @@ export default function ResetPasswordScreen() {
         style={styles.container}
       >
         <View style={styles.content}>
-          <Text style={[styles.title, { color: theme.colors.text }]}>
-            Set New Password
+          <Text style={[styles.title, { color: theme.colors.text.primary }]}>
+            Reset Password
           </Text>
-          <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-            Please enter your new password below.
+          <Text style={[styles.subtitle, { color: theme.colors.text.secondary }]}>
+            Enter your new password below
           </Text>
 
           <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
+            <Ionicons name="lock-closed-outline" size={20} color={theme.colors.text.secondary} style={styles.inputIcon} />
             <TextInput
-              style={[styles.input, { 
-                color: theme.colors.text,
-                backgroundColor: theme.colors.card,
-                borderColor: theme.colors.border 
+              style={[styles.input, {
+                color: theme.colors.text.primary,
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border
               }]}
               placeholder="New Password"
-              placeholderTextColor={theme.colors.textSecondary}
               value={newPassword}
               onChangeText={setNewPassword}
               secureTextEntry
+              placeholderTextColor={theme.colors.text.secondary}
+              autoCapitalize="none"
               editable={!loading}
             />
           </View>
 
           <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
+            <Ionicons name="lock-closed-outline" size={20} color={theme.colors.text.secondary} style={styles.inputIcon} />
             <TextInput
-              style={[styles.input, { 
-                color: theme.colors.text,
-                backgroundColor: theme.colors.card,
-                borderColor: theme.colors.border 
+              style={[styles.input, {
+                color: theme.colors.text.primary,
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border
               }]}
-              placeholder="Confirm New Password"
-              placeholderTextColor={theme.colors.textSecondary}
+              placeholder="Confirm Password"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
+              placeholderTextColor={theme.colors.text.secondary}
+              autoCapitalize="none"
               editable={!loading}
             />
           </View>

@@ -1,27 +1,29 @@
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../contexts/ThemeContext';
-import { verifyPhoneCode, sendPhoneVerificationCode } from '../lib/verification';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
-import { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../contexts/ThemeContext';
+import { sendPhoneVerificationCode, verifyPhoneCode } from '../lib/verification';
 
-type PhoneVerificationScreenRouteProp = RouteProp<RootStackParamList, 'PhoneVerification'>;
+// Flexible type for phone verification that works in both contexts
+type PhoneVerificationParams = {
+  phoneNumber: string;
+};
 
 export default function PhoneVerificationScreen() {
   const navigation = useNavigation();
-  const route = useRoute<PhoneVerificationScreenRouteProp>();
+  const route = useRoute();
   const { theme } = useTheme();
   const { refreshProfile } = useAuth();
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -30,7 +32,8 @@ export default function PhoneVerificationScreen() {
   const [resendTimer, setResendTimer] = useState(60);
   const [canResend, setCanResend] = useState(false);
 
-  const { phoneNumber } = route.params;
+  // Get phone number from route params with type safety
+  const { phoneNumber } = (route.params as PhoneVerificationParams) || { phoneNumber: '' };
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -100,7 +103,10 @@ export default function PhoneVerificationScreen() {
       if (result.success) {
         setResendTimer(60);
         setCanResend(false);
-        Alert.alert('Success', 'Verification code resent successfully');
+        
+        // Show different message for development vs production
+        const message = result.message || 'Verification code resent successfully';
+        Alert.alert('Success', message);
       } else {
         throw new Error(result.error || 'Failed to resend code');
       }
@@ -110,6 +116,23 @@ export default function PhoneVerificationScreen() {
       setLoading(false);
     }
   };
+
+  // Send initial code when component mounts
+  useEffect(() => {
+    const sendInitialCode = async () => {
+      try {
+        const result = await sendPhoneVerificationCode(phoneNumber);
+        if (result.success && result.message) {
+          // Show development mode message
+          Alert.alert('Development Mode', result.message);
+        }
+      } catch (error) {
+        console.error('Error sending initial code:', error);
+      }
+    };
+    
+    sendInitialCode();
+  }, [phoneNumber]);
 
   return (
     <KeyboardAvoidingView
@@ -131,11 +154,21 @@ export default function PhoneVerificationScreen() {
           Enter the 6-digit code sent to {phoneNumber}
         </Text>
 
+        {/* Development Mode Indicator */}
+        {__DEV__ && (
+          <View style={styles.devModeContainer}>
+            <Text style={styles.devModeTitle}>🔧 Development Mode</Text>
+            <Text style={styles.devModeText}>Use code: 123456</Text>
+          </View>
+        )}
+
         <View style={styles.codeContainer}>
           {code.map((digit, index) => (
             <TextInput
               key={index}
-              ref={ref => inputRefs.current[index] = ref}
+              ref={(ref) => {
+                inputRefs.current[index] = ref;
+              }}
               style={styles.codeInput}
               value={digit}
               onChangeText={text => handleCodeChange(text, index)}
@@ -249,5 +282,20 @@ const styles = StyleSheet.create({
   },
   resendButtonTextDisabled: {
     color: '#999',
+  },
+  devModeContainer: {
+    backgroundColor: '#f0f0f0',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  devModeTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  devModeText: {
+    fontSize: 14,
+    color: '#666',
   },
 }); 

@@ -1,12 +1,39 @@
-import 'react-native-url-polyfill/auto';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@env';
+import Constants from 'expo-constants';
+import 'react-native-url-polyfill/auto';
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  throw new Error('Missing Supabase credentials. Please check your .env file.');
+if (!Constants.expoConfig?.extra) {
+  throw new Error('Missing Expo configuration.');
 }
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const { SUPABASE_URL, SUPABASE_ANON_KEY } = Constants.expoConfig.extra as {
+  SUPABASE_URL: string;
+  SUPABASE_ANON_KEY: string;
+};
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error('Missing Supabase credentials. Please check your app.config.js file.');
+}
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    storage: AsyncStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 2,
+    },
+  },
+  global: {
+    headers: {
+      'X-Client-Info': 'supabase-js-react-native',
+    },
+  },
+});
 
 // Test function to verify Supabase connection
 export const testSupabaseConnection = async () => {

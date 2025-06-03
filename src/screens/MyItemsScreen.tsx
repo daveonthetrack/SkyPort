@@ -1,27 +1,26 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
-  Alert, 
-  RefreshControl,
-  ActivityIndicator,
-  Image,
-  Dimensions,
-  Modal,
-  ScrollView,
-  Platform
-} from 'react-native';
-import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../contexts/ThemeContext';
-import { format, subDays, subMonths } from 'date-fns';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { format, subDays, subMonths } from 'date-fns';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+    Alert,
+    Dimensions,
+    FlatList,
+    Image,
+    Modal,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { supabase } from '../lib/supabase';
 import { HomeStackParamList, TabParamList } from '../navigation/types';
 
 const { width } = Dimensions.get('window');
@@ -130,16 +129,16 @@ const FilterModal = ({
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContainer, { backgroundColor: theme.colors.card }]}>
           <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Filter Items</Text>
+            <Text style={[styles.modalTitle, { color: theme.colors.text.primary }]}>Filter Items</Text>
             <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={theme.colors.text} />
+              <Ionicons name="close" size={24} color={theme.colors.text.primary} />
             </TouchableOpacity>
           </View>
           
           <ScrollView style={styles.modalBody}>
             {/* Status Filter */}
             <View style={styles.filterSection}>
-              <Text style={[styles.filterSectionTitle, { color: theme.colors.text }]}>Status</Text>
+              <Text style={[styles.filterSectionTitle, { color: theme.colors.text.primary }]}>Status</Text>
               <View style={styles.filterOptions}>
                 {['pending', 'accepted', 'delivered'].map(status => (
                   <TouchableOpacity 
@@ -155,7 +154,7 @@ const FilterModal = ({
                     <Text 
                       style={[
                         styles.filterChipText, 
-                        { color: localFilters.status.includes(status) ? '#fff' : theme.colors.text }
+                        { color: localFilters.status.includes(status) ? '#fff' : theme.colors.text.primary }
                       ]}
                     >
                       {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -167,7 +166,7 @@ const FilterModal = ({
             
             {/* Size Filter */}
             <View style={styles.filterSection}>
-              <Text style={[styles.filterSectionTitle, { color: theme.colors.text }]}>Size</Text>
+              <Text style={[styles.filterSectionTitle, { color: theme.colors.text.primary }]}>Size</Text>
               <View style={styles.filterOptions}>
                 {['small', 'medium', 'large'].map(size => (
                   <TouchableOpacity 
@@ -183,7 +182,7 @@ const FilterModal = ({
                     <Text 
                       style={[
                         styles.filterChipText, 
-                        { color: localFilters.size.includes(size) ? '#fff' : theme.colors.text }
+                        { color: localFilters.size.includes(size) ? '#fff' : theme.colors.text.primary }
                       ]}
                     >
                       {size.charAt(0).toUpperCase() + size.slice(1)}
@@ -195,7 +194,7 @@ const FilterModal = ({
             
             {/* Date Filter */}
             <View style={styles.filterSection}>
-              <Text style={[styles.filterSectionTitle, { color: theme.colors.text }]}>Date Posted</Text>
+              <Text style={[styles.filterSectionTitle, { color: theme.colors.text.primary }]}>Date Posted</Text>
               <View style={styles.filterOptions}>
                 {[
                   { key: 'all', label: 'All Time' },
@@ -216,7 +215,7 @@ const FilterModal = ({
                     <Text 
                       style={[
                         styles.filterChipText, 
-                        { color: localFilters.date === option.key ? '#fff' : theme.colors.text }
+                        { color: localFilters.date === option.key ? '#fff' : theme.colors.text.primary }
                       ]}
                     >
                       {option.label}
@@ -232,7 +231,7 @@ const FilterModal = ({
               style={[styles.resetButton, { borderColor: theme.colors.border }]}
               onPress={resetFilters}
             >
-              <Text style={[styles.resetButtonText, { color: theme.colors.text }]}>Reset</Text>
+              <Text style={[styles.resetButtonText, { color: theme.colors.text.primary }]}>Reset</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.applyButton, { backgroundColor: theme.colors.primary }]}
@@ -376,7 +375,7 @@ export const MyItemsScreen = () => {
             />
           ) : (
             <View style={[styles.placeholderImage, { backgroundColor: theme.colors.border }]}>
-              <Ionicons name="image-outline" size={30} color={theme.colors.textSecondary} />
+              <Ionicons name="image-outline" size={30} color={theme.colors.text.secondary} />
             </View>
           )}
           <View style={[styles.statusBadge, { backgroundColor: statusConfig.color }]}>
@@ -391,7 +390,7 @@ export const MyItemsScreen = () => {
           </Text>
           
           <View style={styles.locationRow}>
-            <Ionicons name="location-outline" size={14} color={theme.colors.textSecondary} />
+            <Ionicons name="location-outline" size={14} color={theme.colors.text.secondary} />
             <Text style={styles.locationText} numberOfLines={1}>
               {item.pickup_location}
             </Text>
@@ -402,7 +401,7 @@ export const MyItemsScreen = () => {
               <Ionicons 
                 name={item.size === 'small' ? 'cube-outline' : item.size === 'medium' ? 'cube' : 'cube-sharp'} 
                 size={14} 
-                color={theme.colors.textSecondary} 
+                color={theme.colors.text.secondary} 
               />
               <Text style={styles.sizeText}>{item.size}</Text>
             </View>
@@ -418,7 +417,7 @@ export const MyItemsScreen = () => {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.colors.text }]}>My Items</Text>
+        <Text style={[styles.title, { color: theme.colors.text.primary }]}>My Items</Text>
         <TouchableOpacity 
           style={[
             styles.filterButton, 
@@ -429,12 +428,12 @@ export const MyItemsScreen = () => {
           <Ionicons 
             name="filter" 
             size={18} 
-            color={filterCount > 0 ? '#fff' : theme.colors.text} 
+            color={filterCount > 0 ? '#fff' : theme.colors.text.primary} 
           />
           <Text 
             style={[
               styles.filterText, 
-              { color: filterCount > 0 ? '#fff' : theme.colors.text }
+              { color: filterCount > 0 ? '#fff' : theme.colors.text.primary }
             ]}
           >
             {filterCount > 0 ? `Filters (${filterCount})` : 'Filter'}
@@ -446,11 +445,11 @@ export const MyItemsScreen = () => {
         <LoadingSkeleton />
       ) : items.length === 0 ? (
         <View style={styles.emptyState}>
-          <Ionicons name="cube-outline" size={64} color={theme.colors.textSecondary} />
-          <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+          <Ionicons name="cube-outline" size={64} color={theme.colors.text.secondary} />
+          <Text style={[styles.emptyStateText, { color: theme.colors.text.primary }]}>
             You haven't posted any items yet
           </Text>
-          <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]}>
+          <Text style={[styles.emptyStateSubtext, { color: theme.colors.text.secondary }]}>
             Start by posting your first item to find a traveler
           </Text>
           <TouchableOpacity 
@@ -463,11 +462,11 @@ export const MyItemsScreen = () => {
         </View>
       ) : filteredItems.length === 0 && filterCount > 0 ? (
         <View style={styles.emptyState}>
-          <Ionicons name="search-outline" size={64} color={theme.colors.textSecondary} />
-          <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+          <Ionicons name="search-outline" size={64} color={theme.colors.text.secondary} />
+          <Text style={[styles.emptyStateText, { color: theme.colors.text.primary }]}>
             No matching items
           </Text>
-          <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]}>
+          <Text style={[styles.emptyStateSubtext, { color: theme.colors.text.secondary }]}>
             Try adjusting your filters to see more results
           </Text>
           <TouchableOpacity 

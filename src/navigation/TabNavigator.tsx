@@ -1,32 +1,39 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../contexts/AuthContext';
+import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
-import type { NavigationProp, CompositeNavigationProp } from '@react-navigation/native';
-import TravelerDashboard from '../screens/TravelerDashboard';
-import SenderDashboard from '../screens/SenderDashboard';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../contexts/AuthContext';
 import ChatListScreen from '../screens/ChatListScreen';
-import ProfileScreen from '../screens/ProfileScreen';
-import { colors } from '../theme';
-import { View, ActivityIndicator, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
-import { PostItemScreen } from '../screens/PostItemScreen';
-import { PostTripScreen } from '../screens/PostTripScreen';
+import ChatScreen from '../screens/ChatScreen';
+import DeliveredItemsScreen from '../screens/DeliveredItemsScreen';
+import DIDOnboardingScreen from '../screens/DIDOnboardingScreen';
+import EmailVerificationScreen from '../screens/EmailVerificationScreen';
+import FindItemsScreen from '../screens/FindItemsScreen';
+import { FindTravelersScreen } from '../screens/FindTravelersScreen';
+import { HandoverTestScreen } from '../screens/HandoverTestScreen';
+import HelpSupportScreen from '../screens/HelpSupportScreen';
+import IdVerificationScreen from '../screens/IdVerificationScreen';
+import ImageViewerScreen from '../screens/ImageViewerScreen';
+import ItemDetailsScreen from '../screens/ItemDetailsScreen';
 import { MyItemsScreen } from '../screens/MyItemsScreen';
 import { MyTripsScreen } from '../screens/MyTripsScreen';
-import { FindTravelersScreen } from '../screens/FindTravelersScreen';
-import FindItemsScreen from '../screens/FindItemsScreen';
-import ChatScreen from '../screens/ChatScreen';
+import PhoneVerificationScreen from '../screens/PhoneVerificationScreen';
 import PickupDetailsScreen from '../screens/PickupDetailsScreen';
-import ItemDetailsScreen from '../screens/ItemDetailsScreen';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import TripDetailsScreen from '../screens/TripDetailsScreen';
-import ImageViewerScreen from '../screens/ImageViewerScreen';
-import { TabParamList, MessagesStackParamList } from './types';
+import { PostItemScreen } from '../screens/PostItemScreen';
+import { PostTripScreen } from '../screens/PostTripScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import SenderDashboard from '../screens/SenderDashboard';
+import SettingsScreen from '../screens/SettingsScreen';
+import TravelerDashboard from '../screens/TravelerDashboard';
 import TravelerItemDetailsScreen from '../screens/TravelerItemDetailsScreen';
-import DeliveredItemsScreen from '../screens/DeliveredItemsScreen';
+import TripDetailsScreen from '../screens/TripDetailsScreen';
+import { colors } from '../theme';
+import { MessagesStackParamList, TabParamList } from './types';
 
 type ChatScreenParams = {
   otherUserId: string;
@@ -58,11 +65,25 @@ type HomeStackParamList = {
   };
   TripDetails: undefined;
   DeliveredItems: undefined;
+  Settings: undefined;
+  HelpSupport: undefined;
+};
+
+type ProfileStackParamList = {
+  ProfileMain: undefined;
+  EmailVerification: undefined;
+  PhoneVerification: {
+    phoneNumber: string;
+  };
+  IdVerification: undefined;
+  DIDOnboarding: undefined;
+  HandoverTest: undefined;
 };
 
 const Tab = createBottomTabNavigator<TabParamList>();
 const MessagesStack = createNativeStackNavigator<MessagesStackParamList>();
 const HomeStackNavigator = createNativeStackNavigator<HomeStackParamList>();
+const ProfileStackNavigator = createNativeStackNavigator<ProfileStackParamList>();
 
 type IconName = 
   | 'home' 
@@ -168,6 +189,16 @@ const HomeStackScreen = () => {
             component={DeliveredItemsScreen}
             options={{ title: 'Delivered Items' }}
           />
+          <HomeStackNavigator.Screen 
+            name="Settings" 
+            component={SettingsScreen}
+            options={{ headerShown: false }}
+          />
+          <HomeStackNavigator.Screen 
+            name="HelpSupport" 
+            component={HelpSupportScreen}
+            options={{ headerShown: false }}
+          />
         </>
       ) : (
         <>
@@ -211,6 +242,16 @@ const HomeStackScreen = () => {
             component={DeliveredItemsScreen}
             options={{ title: 'Delivered Items' }}
           />
+          <HomeStackNavigator.Screen 
+            name="Settings" 
+            component={SettingsScreen}
+            options={{ headerShown: false }}
+          />
+          <HomeStackNavigator.Screen 
+            name="HelpSupport" 
+            component={HelpSupportScreen}
+            options={{ headerShown: false }}
+          />
         </>
       )}
     </HomeStackNavigator.Navigator>
@@ -247,6 +288,53 @@ function MessagesStackNavigator() {
     </MessagesStack.Navigator>
   );
 }
+
+const ProfileStackScreen = () => {
+  return (
+    <ProfileStackNavigator.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: colors.primary,
+        },
+        headerTintColor: colors.white,
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+      }}
+    >
+      <ProfileStackNavigator.Screen 
+        name="ProfileMain" 
+        component={ProfileScreen}
+        options={{ headerShown: false }}
+      />
+      <ProfileStackNavigator.Screen 
+        name="EmailVerification" 
+        component={EmailVerificationScreen}
+        options={{ headerShown: false }}
+      />
+      <ProfileStackNavigator.Screen 
+        name="PhoneVerification" 
+        component={PhoneVerificationScreen}
+        options={{ headerShown: false }}
+      />
+      <ProfileStackNavigator.Screen 
+        name="IdVerification" 
+        component={IdVerificationScreen}
+        options={{ headerShown: false }}
+      />
+      <ProfileStackNavigator.Screen 
+        name="DIDOnboarding" 
+        component={DIDOnboardingScreen}
+        options={{ headerShown: false }}
+      />
+      <ProfileStackNavigator.Screen 
+        name="HandoverTest" 
+        component={HandoverTestScreen}
+        options={{ title: 'Handover System Test' }}
+      />
+    </ProfileStackNavigator.Navigator>
+  );
+};
 
 // Define navigation type for the Tab Navigator
 type RootTabNavigationProp = NavigationProp<HomeStackParamList>;
@@ -377,7 +465,7 @@ export const TabNavigator = () => {
         />
         <Tab.Screen 
           name="Profile" 
-          component={ProfileScreen}
+          component={ProfileStackScreen}
           options={getScreenOptions('Profile', isTraveler)}
         />
       </Tab.Navigator>

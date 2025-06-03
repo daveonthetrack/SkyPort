@@ -1,30 +1,30 @@
-import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Alert, 
-  ScrollView,
-  Switch,
-  ActivityIndicator,
-  Modal,
-  FlatList,
-  Image,
-} from 'react-native';
-import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { HomeStackParamList, TabParamList } from '../navigation/types';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { CompositeNavigationProp, RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Image,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { colors, spacing, borderRadius, shadows } from '../theme';
+import { HomeStackParamList, TabParamList } from '../navigation/types';
 import { NotificationService } from '../services/NotificationService';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import { borderRadius, colors, shadows, spacing } from '../theme';
 
 // Add base64 to array buffer conversion
 const decode = (base64: string) => {
@@ -75,6 +75,11 @@ type PostTripScreenNavigationProp = CompositeNavigationProp<
 export const PostTripScreen = () => {
   const { profile } = useAuth();
   const navigation = useNavigation<PostTripScreenNavigationProp>();
+  const route = useRoute<RouteProp<HomeStackParamList, 'PostTrip'>>();
+  
+  // Get the trip to edit from route params
+  const editTrip = route.params?.editTrip;
+  const isEditing = !!editTrip;
   
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
@@ -102,6 +107,23 @@ export const PostTripScreen = () => {
   // Add state for auto-fill modal
   const [showAutoFillModal, setShowAutoFillModal] = useState(false);
   const [filterInternational, setFilterInternational] = useState(false);
+
+  // Pre-fill form when editing a trip
+  useEffect(() => {
+    if (editTrip) {
+      setOrigin(editTrip.origin);
+      setDestination(editTrip.destination);
+      setDepartureDate(new Date(editTrip.departure_date));
+      setReturnDate(editTrip.return_date ? new Date(editTrip.return_date) : null);
+      setCapacity(editTrip.capacity);
+      setTripType(editTrip.trip_type || 'round-trip');
+      setVerifyTrip(editTrip.is_verified || false);
+      setVerificationMethod(editTrip.verification_method as 'ticket' | 'booking' | 'other' || 'ticket');
+      // Clear any validation errors
+      setOriginError(false);
+      setDestinationError(false);
+    }
+  }, [editTrip]);
 
   // Filter routes based on international preference
   const filteredRoutes = filterInternational 
@@ -213,11 +235,13 @@ export const PostTripScreen = () => {
       return;
     }
 
-    // Make sure departure date is not in the past
+    // Make sure departure date is not in the past (only for new trips)
+    if (!isEditing) {
     const now = new Date();
     if (departureDate < now) {
       Alert.alert('Error', 'Departure date cannot be in the past');
       return;
+      }
     }
 
     // Make sure return date is after departure date (only if round-trip)
@@ -228,11 +252,7 @@ export const PostTripScreen = () => {
 
     setLoading(true);
     try {
-      // Insert trip into database
-      const { data, error } = await supabase
-        .from('trips')
-        .insert([
-          {
+      const tripData = {
             user_id: profile?.id,
             origin,
             destination,
@@ -241,10 +261,30 @@ export const PostTripScreen = () => {
             capacity,
             status: 'pending',
             notes,
-            trip_type: tripType, // Add trip type to database
-          },
-        ])
+        trip_type: tripType,
+        updated_at: new Date().toISOString(),
+      };
+
+      let data, error;
+
+      if (isEditing && editTrip) {
+        // Update existing trip
+        const result = await supabase
+          .from('trips')
+          .update(tripData)
+          .eq('id', editTrip.id)
         .select();
+        data = result.data;
+        error = result.error;
+      } else {
+        // Insert new trip
+        const result = await supabase
+          .from('trips')
+          .insert([tripData])
+          .select();
+        data = result.data;
+        error = result.error;
+      }
 
       if (error) throw error;
       
@@ -264,7 +304,7 @@ export const PostTripScreen = () => {
 
         Alert.alert(
           'Success', 
-          'Trip posted successfully!',
+          isEditing ? 'Trip updated successfully!' : 'Trip posted successfully!',
           [
             { 
               text: 'View My Trips', 
@@ -277,13 +317,15 @@ export const PostTripScreen = () => {
           ]
         );
         
-        // Clear form
+        // Clear form only if creating new trip
+        if (!isEditing) {
         setOrigin('');
         setDestination('');
         setDepartureDate(new Date());
         setReturnDate(null);
         setCapacity('medium');
         setNotes('');
+        }
 
         if (verifyTrip && verificationImage) {
           try {
@@ -445,8 +487,15 @@ export const PostTripScreen = () => {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>Post New Trip</Text>
-        <Text style={styles.subtitle}>Share your travel plans to carry items for others</Text>
+        <Text style={styles.title}>
+          {isEditing ? 'Edit Trip' : 'Post New Trip'}
+        </Text>
+        <Text style={styles.subtitle}>
+          {isEditing 
+            ? 'Update your travel plans and delivery preferences' 
+            : 'Share your travel plans to carry items for others'
+          }
+        </Text>
         
         <View style={styles.quickFillContainer}>
           <TouchableOpacity 
@@ -863,7 +912,9 @@ export const PostTripScreen = () => {
           ) : (
             <>
               <Ionicons name="airplane" size={20} color="#fff" />
-              <Text style={styles.buttonText}>Post Trip</Text>
+              <Text style={styles.buttonText}>
+                {isEditing ? 'Update Trip' : 'Post Trip'}
+              </Text>
             </>
           )}
         </TouchableOpacity>

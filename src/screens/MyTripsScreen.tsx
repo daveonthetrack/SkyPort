@@ -1,20 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { differenceInDays, isBefore } from 'date-fns';
+import { differenceInDays, format, isBefore } from 'date-fns';
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Modal,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { RootStackParamList } from '../navigation/types';
@@ -36,9 +38,12 @@ type Trip = {
   delivery_date?: string;
   estimated_delivery_date?: string;
   trip_type?: 'one-way' | 'round-trip';
+  user_id?: string;
+  updated_at?: string;
 };
 
 type FilterType = 'all' | 'upcoming' | 'active' | 'completed' | 'verified';
+type SortType = 'date' | 'status' | 'destination';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'MyTrips'>;
 
@@ -46,20 +51,40 @@ export const MyTripsScreen = () => {
   const { profile } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [filteredTrips, setFilteredTrips] = useState<Trip[]>([]);
-  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('upcoming');
+  const [sortBy, setSortBy] = useState<SortType>('date');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [verificationModalVisible, setVerificationModalVisible] = useState(false);
+  const [sortModalVisible, setSortModalVisible] = useState(false);
   const navigation = useNavigation<NavigationProp>();
+
+  // Enhanced filter counts for better UX
+  const getFilterCounts = () => {
+    const now = new Date();
+    const counts = {
+      all: trips.length,
+      upcoming: trips.filter(trip => {
+        const departureDate = new Date(trip.departure_date);
+        return isBefore(now, departureDate) && trip.status === 'pending';
+      }).length,
+      active: trips.filter(trip => trip.status === 'accepted').length,
+      completed: trips.filter(trip => trip.status === 'completed').length,
+      verified: trips.filter(trip => trip.is_verified).length,
+    };
+    return counts;
+  };
+
+  const filterCounts = getFilterCounts();
 
   useEffect(() => {
     fetchTrips();
   }, []);
 
   useEffect(() => {
-    applyFilter(activeFilter);
-  }, [trips, activeFilter]);
+    applyFilterAndSort();
+  }, [trips, activeFilter, sortBy]);
 
   const fetchTrips = async () => {
     try {
@@ -80,29 +105,55 @@ export const MyTripsScreen = () => {
     }
   };
 
-  const applyFilter = (filter: FilterType) => {
+  const applyFilterAndSort = () => {
+    let filtered = [...trips];
     const now = new Date();
     
-    switch (filter) {
+    // Enhanced filter logic with better conditions
+    switch (activeFilter) {
       case 'upcoming':
-        setFilteredTrips(trips.filter(trip => {
+        filtered = filtered.filter(trip => {
           const departureDate = new Date(trip.departure_date);
           return isBefore(now, departureDate) && trip.status === 'pending';
-        }));
+        });
         break;
       case 'active':
-        setFilteredTrips(trips.filter(trip => trip.status === 'accepted'));
+        filtered = filtered.filter(trip => trip.status === 'accepted');
         break;
       case 'completed':
-        setFilteredTrips(trips.filter(trip => trip.status === 'completed'));
+        filtered = filtered.filter(trip => trip.status === 'completed');
         break;
       case 'verified':
-        setFilteredTrips(trips.filter(trip => trip.is_verified));
+        filtered = filtered.filter(trip => trip.is_verified);
         break;
       default:
-        setFilteredTrips(trips);
+        // 'all' - no filtering
         break;
     }
+    
+    // Enhanced sorting logic
+    switch (sortBy) {
+      case 'date':
+        filtered.sort((a, b) => new Date(a.departure_date).getTime() - new Date(b.departure_date).getTime());
+        break;
+      case 'status':
+        const statusOrder = { 'pending': 0, 'accepted': 1, 'completed': 2 };
+        filtered.sort((a, b) => {
+          const statusA = a.status || 'pending';
+          const statusB = b.status || 'pending';
+          return statusOrder[statusA as keyof typeof statusOrder] - statusOrder[statusB as keyof typeof statusOrder];
+        });
+        break;
+      case 'destination':
+        filtered.sort((a, b) => a.destination.localeCompare(b.destination));
+        break;
+    }
+    
+    setFilteredTrips(filtered);
+  };
+
+  const handleFilterChange = (filter: FilterType) => {
+    setActiveFilter(filter);
   };
 
   const handleVerifyTrip = (trip: Trip) => {
@@ -113,13 +164,13 @@ export const MyTripsScreen = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
-        return '#FFA500';
+        return '#FF9500';
       case 'accepted':
-        return '#32CD32';
+        return '#34C759';
       case 'completed':
-        return '#4169E1';
+        return '#007AFF';
       default:
-        return '#000';
+        return '#8E8E93';
     }
   };
 
@@ -137,11 +188,11 @@ export const MyTripsScreen = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    return format(new Date(dateString), 'MMM dd, yyyy');
+  };
+
+  const formatTime = (dateString: string) => {
+    return format(new Date(dateString), 'h:mm a');
   };
 
   const getDaysUntilTrip = (dateString: string) => {
@@ -161,7 +212,6 @@ export const MyTripsScreen = () => {
   };
 
   const handleNavigateToFindItems = (trip: Trip) => {
-    // Navigate to find items that match this trip
     navigation.navigate('FindItems', { 
       origin: trip.origin,
       destination: trip.destination,
@@ -178,7 +228,6 @@ export const MyTripsScreen = () => {
     if (!selectedTrip) return;
     
     try {
-      // Update the trip to be verified
       const { error } = await supabase
         .from('trips')
         .update({
@@ -190,7 +239,6 @@ export const MyTripsScreen = () => {
         
       if (error) throw error;
       
-      // Close modal and refresh trips
       setVerificationModalVisible(false);
       setSelectedTrip(null);
       fetchTrips();
@@ -201,125 +249,42 @@ export const MyTripsScreen = () => {
       Alert.alert('Error', error.message || 'Failed to verify trip');
     }
   };
-
-  const renderItem = ({ item }: { item: Trip }) => {
-    const departureDate = new Date(item.departure_date);
-    const isUpcoming = departureDate > new Date();
     
     return (
-      <View style={styles.tripCard}>
-        {/* Status indicator */}
-        <View style={[
-          styles.statusIndicator, 
-          { backgroundColor: getStatusColor(item.status) }
-        ]} />
-        
-        <View style={styles.tripHeader}>
-          <View style={styles.tripTypeContainer}>
-            <Ionicons 
-              name={item.trip_type === 'round-trip' ? 'repeat' : 'arrow-forward'} 
-              size={16} 
-              color={colors.text.secondary} 
-            />
-            <Text style={styles.tripTypeText}>
-              {item.trip_type === 'round-trip' ? 'Round Trip' : 'One Way'}
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <LinearGradient
+        colors={[colors.primary, colors.secondary]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.title}>My Trips</Text>
+            <Text style={styles.subtitle}>
+              {filteredTrips.length} {filteredTrips.length === 1 ? 'trip' : 'trips'}
+              {activeFilter !== 'all' && ` • ${activeFilter}`}
             </Text>
           </View>
-          
-          <View style={styles.badgeContainer}>
-            {item.is_verified && (
-              <View style={styles.verifiedBadge}>
-                <Ionicons name="shield-checkmark" size={14} color="#fff" />
-                <Text style={styles.verifiedText}>Verified</Text>
-              </View>
-            )}
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-              <Text style={styles.statusText}>
-                {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-              </Text>
-            </View>
-          </View>
-        </View>
-        
-        <View style={styles.routeContainer}>
-          <View style={styles.routePoint}>
-            <View style={styles.originDot} />
-            <View style={styles.routeDetails}>
-              <Text style={styles.routeLabel}>From</Text>
-              <Text style={styles.locationText}>{item.origin}</Text>
-              <Text style={styles.dateInline}>{formatDate(item.departure_date)}</Text>
-            </View>
-          </View>
-          
-          <View style={styles.routeLine} />
-          
-          <View style={styles.routePoint}>
-            <View style={styles.destinationDot} />
-            <View style={styles.routeDetails}>
-              <Text style={styles.routeLabel}>To</Text>
-              <Text style={styles.locationText}>{item.destination}</Text>
-              {item.return_date ? (
-                <Text style={styles.dateInline}>{formatDate(item.return_date)}</Text>
-              ) : (
-                <Text style={styles.dateInline}>No return</Text>
-              )}
-            </View>
-          </View>
-        </View>
-        
-        <View style={styles.tripInfoContainer}>
-          <View style={styles.infoItem}>
-            <Ionicons name={getCapacityIcon(item.capacity)} size={20} color={colors.primary} />
-            <Text style={styles.infoText}>
-              {item.capacity.charAt(0).toUpperCase() + item.capacity.slice(1)}
-            </Text>
-          </View>
-          
-          {isUpcoming && (
-            <View style={styles.infoItem}>
-              <Ionicons name="time-outline" size={20} color={colors.primary} />
-              <Text style={styles.infoText}>{getDaysUntilTrip(item.departure_date)}</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.buttonContainer}>
-          {!item.is_verified && (
+          <View style={styles.headerActions}>
             <TouchableOpacity 
-              style={styles.verifyButton}
-              onPress={() => handleVerifyTrip(item)}
+              style={styles.sortButton}
+              onPress={() => setSortModalVisible(true)}
             >
-              <Ionicons name="shield-outline" size={18} color="#fff" />
-              <Text style={styles.verifyButtonText}>Verify</Text>
+              <Ionicons name="funnel-outline" size={20} color={colors.white} />
             </TouchableOpacity>
-          )}
-          
-          <TouchableOpacity 
-            style={styles.viewItemsButton}
-            onPress={() => handleNavigateToFindItems(item)}
-          >
-            <Ionicons name="search" size={18} color="#fff" />
-            <Text style={styles.viewItemsButtonText}>Find Items</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
-
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>My Trips</Text>
         <TouchableOpacity
           style={styles.addButton}
           onPress={() => navigation.navigate('PostTrip')}
         >
-          <Ionicons name="add-circle" size={24} color={colors.primary} />
-          <Text style={styles.addButtonText}>New Trip</Text>
+              <Ionicons name="add" size={24} color={colors.white} />
         </TouchableOpacity>
       </View>
+        </View>
+      </LinearGradient>
 
-      <View style={styles.filterContainer}>
+      {/* Enhanced Filter Section */}
+      <View style={styles.filterSection}>
         <ScrollView 
           horizontal 
           showsHorizontalScrollIndicator={false}
@@ -328,110 +293,370 @@ export const MyTripsScreen = () => {
           <TouchableOpacity
             style={[
               styles.filterButton,
-              activeFilter === 'all' && styles.filterButtonActive
+              activeFilter === 'all' && styles.filterButtonActive,
+              { backgroundColor: activeFilter === 'all' ? colors.primary : colors.white }
             ]}
-            onPress={() => setActiveFilter('all')}
+            onPress={() => handleFilterChange('all')}
           >
+            <Ionicons 
+              name="layers-outline" 
+              size={12} 
+              color={activeFilter === 'all' ? colors.white : colors.text.primary} 
+            />
             <Text style={[
               styles.filterButtonText,
-              activeFilter === 'all' && styles.filterButtonTextActive
+              { color: activeFilter === 'all' ? colors.white : colors.text.primary }
             ]}>
               All
             </Text>
+            {filterCounts.all > 0 && (
+              <View style={[
+                styles.filterBadge,
+                { backgroundColor: activeFilter === 'all' ? 'rgba(255,255,255,0.3)' : colors.primary }
+              ]}>
+                <Text style={[
+                  styles.filterBadgeText,
+                  { color: activeFilter === 'all' ? colors.white : colors.white }
+                ]}>{filterCounts.all}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           
           <TouchableOpacity
             style={[
               styles.filterButton,
-              activeFilter === 'upcoming' && styles.filterButtonActive
+              activeFilter === 'upcoming' && styles.filterButtonActive,
+              { backgroundColor: activeFilter === 'upcoming' ? colors.primary : colors.white }
             ]}
-            onPress={() => setActiveFilter('upcoming')}
+            onPress={() => handleFilterChange('upcoming')}
           >
+            <Ionicons 
+              name="calendar-outline" 
+              size={12} 
+              color={activeFilter === 'upcoming' ? colors.white : '#FF9500'} 
+            />
             <Text style={[
               styles.filterButtonText,
-              activeFilter === 'upcoming' && styles.filterButtonTextActive
+              { color: activeFilter === 'upcoming' ? colors.white : colors.text.primary }
             ]}>
-              Upcoming
+              Coming
             </Text>
+            {filterCounts.upcoming > 0 && (
+              <View style={[
+                styles.filterBadge,
+                { backgroundColor: activeFilter === 'upcoming' ? 'rgba(255,255,255,0.3)' : '#FF9500' }
+              ]}>
+                <Text style={[
+                  styles.filterBadgeText,
+                  { color: activeFilter === 'upcoming' ? colors.white : colors.white }
+                ]}>{filterCounts.upcoming}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           
           <TouchableOpacity
             style={[
               styles.filterButton,
-              activeFilter === 'active' && styles.filterButtonActive
+              activeFilter === 'active' && styles.filterButtonActive,
+              { backgroundColor: activeFilter === 'active' ? colors.primary : colors.white }
             ]}
-            onPress={() => setActiveFilter('active')}
+            onPress={() => handleFilterChange('active')}
           >
+            <Ionicons 
+              name="play-circle-outline" 
+              size={12} 
+              color={activeFilter === 'active' ? colors.white : '#34C759'} 
+            />
             <Text style={[
               styles.filterButtonText,
-              activeFilter === 'active' && styles.filterButtonTextActive
+              { color: activeFilter === 'active' ? colors.white : colors.text.primary }
             ]}>
               Active
             </Text>
+            {filterCounts.active > 0 && (
+              <View style={[
+                styles.filterBadge,
+                { backgroundColor: activeFilter === 'active' ? 'rgba(255,255,255,0.3)' : '#34C759' }
+              ]}>
+                <Text style={[
+                  styles.filterBadgeText,
+                  { color: activeFilter === 'active' ? colors.white : colors.white }
+                ]}>{filterCounts.active}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           
           <TouchableOpacity
             style={[
               styles.filterButton,
-              activeFilter === 'completed' && styles.filterButtonActive
+              activeFilter === 'completed' && styles.filterButtonActive,
+              { backgroundColor: activeFilter === 'completed' ? colors.primary : colors.white }
             ]}
-            onPress={() => setActiveFilter('completed')}
+            onPress={() => handleFilterChange('completed')}
           >
+            <Ionicons 
+              name="checkmark-circle-outline" 
+              size={12} 
+              color={activeFilter === 'completed' ? colors.white : '#007AFF'} 
+            />
             <Text style={[
               styles.filterButtonText,
-              activeFilter === 'completed' && styles.filterButtonTextActive
+              { color: activeFilter === 'completed' ? colors.white : colors.text.primary }
             ]}>
-              Completed
+              Done
             </Text>
+            {filterCounts.completed > 0 && (
+              <View style={[
+                styles.filterBadge,
+                { backgroundColor: activeFilter === 'completed' ? 'rgba(255,255,255,0.3)' : '#007AFF' }
+              ]}>
+                <Text style={[
+                  styles.filterBadgeText,
+                  { color: activeFilter === 'completed' ? colors.white : colors.white }
+                ]}>{filterCounts.completed}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           
           <TouchableOpacity
             style={[
               styles.filterButton,
-              activeFilter === 'verified' && styles.filterButtonActive
+              activeFilter === 'verified' && styles.filterButtonActive,
+              { backgroundColor: activeFilter === 'verified' ? colors.primary : colors.white }
             ]}
-            onPress={() => setActiveFilter('verified')}
+            onPress={() => handleFilterChange('verified')}
           >
+            <Ionicons 
+              name="shield-checkmark-outline" 
+              size={12} 
+              color={activeFilter === 'verified' ? colors.white : '#34C759'} 
+            />
             <Text style={[
               styles.filterButtonText,
-              activeFilter === 'verified' && styles.filterButtonTextActive
+              { color: activeFilter === 'verified' ? colors.white : colors.text.primary }
             ]}>
               Verified
             </Text>
+            {filterCounts.verified > 0 && (
+              <View style={[
+                styles.filterBadge,
+                { backgroundColor: activeFilter === 'verified' ? 'rgba(255,255,255,0.3)' : '#34C759' }
+              ]}>
+                <Text style={[
+                  styles.filterBadgeText,
+                  { color: activeFilter === 'verified' ? colors.white : colors.white }
+                ]}>{filterCounts.verified}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </ScrollView>
       </View>
 
+      {/* Main Content */}
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading trips...</Text>
+          <Text style={[styles.loadingText, { color: colors.text.secondary }]}>Loading trips...</Text>
         </View>
       ) : filteredTrips.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="airplane-outline" size={80} color={colors.text.secondary} />
-          <Text style={styles.emptyStateTitle}>
-            {activeFilter === 'all' ? 'No Trips Yet' : `No ${activeFilter} Trips`}
+        <View style={styles.emptyStateWrapper}>
+          <View style={styles.emptyIconContainer}>
+            <Ionicons name="airplane-outline" size={64} color={colors.text.secondary} />
+          </View>
+          <Text style={[styles.emptyStateTitle, { color: colors.text.primary }]}>
+            {activeFilter === 'all' ? 'No Trips Yet' : 
+             activeFilter === 'upcoming' ? 'No Coming Trips' :
+             activeFilter === 'completed' ? 'No Done Trips' :
+             `No ${activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1)} Trips`}
           </Text>
-          <Text style={styles.emptyStateText}>
+          <Text style={[styles.emptyStateText, { color: colors.text.secondary }]}>
             {activeFilter === 'all' 
-              ? 'Add your upcoming travel plans to find items you can deliver.'
+              ? 'Ready to earn while you travel? Post your first trip to get started.'
+              : activeFilter === 'upcoming' 
+                ? `You don't have any upcoming trips right now.`
+                : activeFilter === 'completed'
+                  ? `You don't have any completed trips yet.`
               : `You don't have any ${activeFilter} trips at the moment.`}
           </Text>
           <TouchableOpacity 
             style={styles.postButton}
             onPress={() => navigation.navigate('PostTrip')}
           >
+            <Ionicons name="add" size={20} color={colors.white} style={{ marginRight: spacing.sm }} />
             <Text style={styles.postButtonText}>Post a New Trip</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <FlatList
           data={filteredTrips}
-          renderItem={renderItem}
+          renderItem={({ item, index }) => (
+            <Animated.View style={styles.animationWrapper}>
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.alert('Trip Details', `View details for trip from ${item.origin} to ${item.destination}`);
+                }}
+                activeOpacity={0.95}
+                style={styles.cardTouchable}
+              >
+                <View style={[styles.tripCard, { backgroundColor: colors.white }]}>
+                  {/* Enhanced status indicator */}
+                  <LinearGradient
+                    colors={[getStatusColor(item.status || 'pending'), getStatusColor(item.status || 'pending') + '80']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.statusIndicator}
+                  />
+                  
+                  {/* Optimized header */}
+                  <View style={styles.tripHeader}>
+                    <View style={styles.tripTypeContainer}>
+                      <View style={[styles.tripTypeIconContainer, { backgroundColor: colors.primary + '15' }]}>
+                        <Ionicons 
+                          name={item.trip_type === 'round-trip' ? 'repeat' : 'arrow-forward'} 
+                          size={14} 
+                          color={colors.primary} 
+                        />
+                      </View>
+                      <Text style={[styles.tripTypeText, { color: colors.text.secondary }]}>
+                        {item.trip_type === 'round-trip' ? 'Round Trip' : 'One Way'}
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.badgeContainer}>
+                      {item.is_verified && (
+                        <View style={styles.verifiedBadge}>
+                          <Ionicons name="shield-checkmark" size={12} color="#fff" />
+                          <Text style={styles.verifiedText}>Verified</Text>
+                        </View>
+                      )}
+                      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status || 'pending') }]}>
+                        <Text style={styles.statusText}>
+                          {(item.status || 'pending').charAt(0).toUpperCase() + (item.status || 'pending').slice(1)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  
+                  {/* Enhanced route section */}
+                  <View style={styles.routeContainer}>
+                    <View style={styles.routePoint}>
+                      <View style={styles.originDot} />
+                      <View style={styles.routeDetails}>
+                        <Text style={[styles.routeLabel, { color: colors.text.secondary }]}>FROM</Text>
+                        <Text style={[styles.locationText, { color: colors.text.primary }]} numberOfLines={1}>
+                          {item.origin}
+                        </Text>
+                        <View style={styles.dateTimeContainer}>
+                          <Ionicons name="calendar-outline" size={12} color={colors.text.secondary} />
+                          <Text style={[styles.dateText, { color: colors.text.secondary }]}>
+                            {formatDate(item.departure_date)}
+                          </Text>
+                          <Ionicons name="time-outline" size={12} color={colors.text.secondary} style={{ marginLeft: 8 }} />
+                          <Text style={[styles.timeText, { color: colors.text.secondary }]}>
+                            {formatTime(item.departure_date)}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.routeLineContainer}>
+                      <View style={[styles.routeLine, { backgroundColor: colors.border }]} />
+                      <Ionicons name="airplane" size={14} color={colors.primary} style={styles.airplaneIcon} />
+                    </View>
+                    
+                    <View style={styles.routePoint}>
+                      <View style={styles.destinationDot} />
+                      <View style={styles.routeDetails}>
+                        <Text style={[styles.routeLabel, { color: colors.text.secondary }]}>TO</Text>
+                        <Text style={[styles.locationText, { color: colors.text.primary }]} numberOfLines={1}>
+                          {item.destination}
+                        </Text>
+                        {item.return_date ? (
+                          <View style={styles.dateTimeContainer}>
+                            <Ionicons name="calendar-outline" size={12} color={colors.text.secondary} />
+                            <Text style={[styles.dateText, { color: colors.text.secondary }]}>
+                              {formatDate(item.return_date)}
+                            </Text>
+                            <Ionicons name="time-outline" size={12} color={colors.text.secondary} style={{ marginLeft: 8 }} />
+                            <Text style={[styles.timeText, { color: colors.text.secondary }]}>
+                              {formatTime(item.return_date)}
+                            </Text>
+                          </View>
+                        ) : (
+                          <Text style={[styles.noReturnText, { color: colors.text.secondary }]}>
+                            No return date
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                  
+                  {/* Optimized info section */}
+                  <View style={[styles.tripInfoContainer, { borderTopColor: colors.border }]}>
+                    <View style={styles.infoItem}>
+                      <View style={[styles.infoIconContainer, { backgroundColor: colors.primary + '15' }]}>
+                        <Ionicons name={getCapacityIcon(item.capacity)} size={16} color={colors.primary} />
+                      </View>
+                      <Text style={[styles.infoText, { color: colors.text.primary }]}>
+                        {item.capacity.charAt(0).toUpperCase() + item.capacity.slice(1)}
+                      </Text>
+                    </View>
+                    
+                    {new Date(item.departure_date) > new Date() && (
+                      <View style={styles.infoItem}>
+                        <View style={[styles.infoIconContainer, { backgroundColor: '#FF9500' + '15' }]}>
+                          <Ionicons name="time-outline" size={16} color="#FF9500" />
+                        </View>
+                        <Text style={[styles.infoText, { color: colors.text.primary }]}>
+                          {getDaysUntilTrip(item.departure_date)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Enhanced action buttons */}
+                  <View style={styles.buttonContainer}>
+                    <TouchableOpacity 
+                      style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                      onPress={() => handleNavigateToFindItems(item)}
+                    >
+                      <Ionicons name="search" size={16} color="#fff" />
+                      <Text style={styles.primaryButtonText}>Find Items</Text>
+                    </TouchableOpacity>
+
+                    {!item.is_verified && new Date(item.departure_date) > new Date() && (
+                      <TouchableOpacity 
+                        style={[styles.secondaryButton, { borderColor: colors.secondary }]}
+                        onPress={() => handleVerifyTrip(item)}
+                      >
+                        <Ionicons name="shield-outline" size={16} color={colors.secondary} />
+                        <Text style={[styles.secondaryButtonText, { color: colors.secondary }]}>Verify</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {new Date(item.departure_date) > new Date() && (
+                      <TouchableOpacity 
+                        style={[styles.iconButton, { backgroundColor: colors.white, borderColor: colors.border }]}
+                        onPress={() => navigation.navigate('PostTrip', { 
+                          editTrip: { 
+                            ...item, 
+                            user_id: item.user_id || profile?.id || '',
+                            updated_at: item.updated_at || new Date().toISOString()
+                          } 
+                        })}
+                      >
+                        <Ionicons name="pencil" size={16} color={colors.primary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -480,57 +705,73 @@ export const MyTripsScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl + 10,
     paddingBottom: spacing.md,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text.primary,
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
   },
-  addButton: {
+  headerLeft: {
+    flexDirection: 'column',
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: colors.white,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: colors.white + 'CC',
+    marginTop: spacing.xs,
+    fontWeight: '500',
+  },
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 122, 255, 0.1)',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
+    gap: spacing.sm,
   },
-  addButtonText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 4,
+  sortButton: {
+    padding: 12,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  addButton: {
+    padding: 12,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: spacing.xl,
   },
   loadingText: {
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
     fontSize: 16,
     color: colors.text.secondary,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   listContainer: {
-    padding: spacing.md,
-    paddingBottom: spacing.xl * 2,
+    padding: spacing.sm,
+    paddingBottom: spacing.lg,
   },
   tripCard: {
     backgroundColor: colors.white,
     borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    ...shadows.medium,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
     position: 'relative',
     overflow: 'hidden',
+    ...shadows.medium,
+    elevation: 4,
   },
   statusIndicator: {
     position: 'absolute',
@@ -543,257 +784,456 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+    paddingLeft: spacing.xs,
   },
   tripTypeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.primary + '10',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: borderRadius.md,
   },
   tripTypeText: {
-    fontSize: 12,
-    color: colors.text.secondary,
-    marginLeft: 4,
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.primary,
+    marginLeft: spacing.xs,
+    textAlign: 'center',
   },
   badgeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.xs,
   },
   routeContainer: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+    paddingLeft: spacing.xs,
   },
   routePoint: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: spacing.sm,
+    position: 'relative',
   },
   originDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: '#34C759',
-    marginTop: 4,
+    marginTop: 3,
     marginRight: spacing.sm,
+    borderWidth: 2,
+    borderColor: '#34C759' + '30',
   },
   destinationDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: colors.primary,
-    marginTop: 4,
+    marginTop: 3,
     marginRight: spacing.sm,
+    borderWidth: 2,
+    borderColor: colors.primary + '30',
   },
   routeLine: {
+    position: 'absolute',
+    left: 4,
+    top: 13,
+    bottom: -spacing.sm,
     width: 2,
-    height: 24,
-    backgroundColor: '#E0E0E0',
-    marginLeft: 5,
-    marginVertical: 2,
+    backgroundColor: '#E5E5EA',
   },
   routeDetails: {
     flex: 1,
+    justifyContent: 'flex-start',
   },
   routeLabel: {
-    fontSize: 12,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     color: colors.text.secondary,
+    textTransform: 'uppercase',
+    marginBottom: 1,
+    textAlign: 'left',
   },
   locationText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     color: colors.text.primary,
+    marginBottom: 1,
+    letterSpacing: -0.2,
+    textAlign: 'left',
+    lineHeight: 18,
   },
-  dateInline: {
-    fontSize: 12,
+  dateTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 1,
+  },
+  dateText: {
+    fontSize: 10,
     color: colors.text.secondary,
-    marginTop: 2,
+    fontWeight: '500',
+    marginLeft: 2,
+    textAlign: 'left',
+  },
+  timeText: {
+    fontSize: 10,
+    color: colors.text.secondary,
+    fontWeight: '500',
+    marginLeft: 6,
+    textAlign: 'left',
+  },
+  noReturnText: {
+    fontSize: 10,
+    color: colors.text.secondary,
+    fontWeight: '500',
+    marginTop: 1,
+    fontStyle: 'italic',
+    textAlign: 'left',
+  },
+  routeLineContainer: {
+    position: 'relative',
+    alignItems: 'center',
+  },
+  airplaneIcon: {
+    position: 'absolute',
+    left: -2,
+    top: '50%',
+    transform: [{ translateY: -7 }],
   },
   tripInfoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginVertical: spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: '#F2F2F7',
+    gap: spacing.sm,
   },
   infoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: spacing.lg,
+    backgroundColor: '#F8F9FA',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.sm,
+  },
+  infoIconContainer: {
+    padding: 2,
+    borderRadius: 6,
+    marginRight: spacing.xs,
   },
   infoText: {
-    fontSize: 14,
+    fontSize: 10,
+    fontWeight: '600',
     color: colors.text.primary,
-    marginLeft: spacing.xs,
+    textAlign: 'center',
   },
   buttonContainer: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: spacing.sm,
-  },
-  verifyButton: {
-    backgroundColor: colors.secondary,
-    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginRight: spacing.md,
+    marginTop: spacing.xs,
+    gap: spacing.xs,
   },
-  verifyButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-    marginLeft: 4,
-  },
-  viewItemsButton: {
+  primaryButton: {
     backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm,
+    flex: 1,
+    ...shadows.small,
   },
-  viewItemsButtonText: {
+  primaryButtonText: {
     color: '#fff',
     fontWeight: '600',
-    fontSize: 14,
-    marginLeft: 4,
+    fontSize: 11,
+    marginLeft: spacing.xs,
+    textAlign: 'center',
   },
-  statusBadge: {
-    borderRadius: 12,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  statusText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  verifiedBadge: {
+  secondaryButton: {
+    borderWidth: 1.5,
+    borderColor: colors.secondary,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#4CAF50',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    marginRight: 8,
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm,
+    backgroundColor: 'transparent',
   },
-  verifiedText: {
-    color: '#fff',
-    fontSize: 12,
+  secondaryButtonText: {
     fontWeight: '600',
-    marginLeft: 3,
+    fontSize: 11,
+    marginLeft: spacing.xs,
+    textAlign: 'center',
+  },
+  iconButton: {
+    padding: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   filterContainer: {
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: 'transparent',
   },
   filterScrollContent: {
     paddingRight: spacing.md,
+    paddingLeft: spacing.xs,
   },
   filterButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    backgroundColor: '#F0F0F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 6,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1,
+    borderColor: 'transparent',
+    ...shadows.small,
   },
   filterButtonActive: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    ...shadows.medium,
   },
   filterButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 11,
+    fontWeight: '600',
     color: colors.text.primary,
+    marginLeft: 3,
   },
-  filterButtonTextActive: {
-    color: '#FFFFFF',
-  },
-  emptyState: {
+  emptyStateWrapper: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.xl,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyIconContainer: {
+    padding: spacing.lg,
+    borderRadius: 50,
+    backgroundColor: colors.background,
+    marginBottom: spacing.lg,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
   },
   emptyStateTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '700',
     color: colors.text.primary,
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
+    textAlign: 'center',
+    letterSpacing: -0.5,
   },
   emptyStateText: {
-    fontSize: 16,
+    fontSize: 15,
     color: colors.text.secondary,
     textAlign: 'center',
+    lineHeight: 22,
     marginBottom: spacing.xl,
-  },
-  postButton: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    width: '100%',
-    alignItems: 'center',
-  },
-  postButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.lg,
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.md,
-    padding: spacing.lg,
-    width: '100%',
-    maxWidth: 400,
-    ...shadows.medium,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: spacing.md,
-    color: colors.text.primary,
-    textAlign: 'center',
-  },
-  modalText: {
-    fontSize: 16,
-    color: colors.text.secondary,
-    marginBottom: spacing.lg,
-    textAlign: 'center',
+    maxWidth: 260,
+    fontWeight: '500',
   },
   modalButtonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: spacing.md,
   },
   modalButton: {
     flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.sm,
+    paddingVertical: spacing.lg,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
-    marginHorizontal: spacing.xs,
+    ...shadows.small,
   },
   cancelButton: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
   },
   cancelButtonText: {
     color: colors.text.primary,
     fontWeight: '600',
+    fontSize: 16,
   },
   verifyConfirmButton: {
     backgroundColor: colors.primary,
   },
   verifyConfirmButtonText: {
     color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  editButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: colors.primary,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...shadows.small,
+  },
+  sortModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    padding: spacing.xl,
+    width: '100%',
+    maxHeight: '60%',
+    ...shadows.large,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: spacing.lg,
+    borderBottomWidth: 1,
+    marginBottom: spacing.lg,
+  },
+  closeButton: {
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+  },
+  sortOptions: {
+    gap: spacing.xs,
+  },
+  sortOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderRadius: borderRadius.md,
+  },
+  sortOptionText: {
+    fontSize: 16,
     fontWeight: '600',
+  },
+  animationWrapper: {
+    width: '100%',
+  },
+  filterSection: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+    backgroundColor: 'transparent',
+  },
+  filterBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 8,
+    marginLeft: 4,
+    minWidth: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.white,
+    textAlign: 'center',
+  },
+  cardTouchable: {
+    flex: 1,
+  },
+  tripTypeIconContainer: {
+    padding: 4,
+    borderRadius: 12,
+    marginRight: spacing.xs,
+  },
+  tripTypeIcon: {
+    width: 20,
+    height: 20,
+  },
+  statusBadge: {
+    borderRadius: 10,
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    minWidth: 50,
+    alignItems: 'center',
+  },
+  statusText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#34C759',
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  verifiedText: {
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: '700',
+    marginLeft: 2,
+    textAlign: 'center',
+  },
+  postButton: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.xl,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl * 1.5,
+    width: '100%',
+    alignItems: 'center',
+    ...shadows.medium,
+  },
+  postButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    padding: spacing.xl,
+    width: '100%',
+    maxHeight: '50%',
+    ...shadows.large,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: spacing.lg,
+    color: colors.text.primary,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  modalText: {
+    fontSize: 16,
+    color: colors.text.secondary,
+    marginBottom: spacing.xl,
+    textAlign: 'center',
+    lineHeight: 24,
+    fontWeight: '500',
   },
 }); 

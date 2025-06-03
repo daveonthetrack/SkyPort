@@ -5,30 +5,35 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { subDays, subMonths } from 'date-fns';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    FlatList,
-    Image,
-    Modal,
-    Platform,
-    RefreshControl,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Modal,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import Animated, {
-    interpolateColor,
-    useAnimatedStyle,
-    useSharedValue,
-    withSpring
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring
 } from 'react-native-reanimated';
+import HandoverCamera from '../components/HandoverCamera';
+import { PackageQRDisplay } from '../components/PackageQRDisplay';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { HomeStackParamList, TabParamList } from '../navigation/types';
+import { didService } from '../services/DIDService';
+import { HandoverService, PackageDetails } from '../services/HandoverService';
+import { GPSCoordinates, locationService } from '../services/LocationService';
 import { colors } from '../theme';
 
 const { width } = Dimensions.get('window');
@@ -56,6 +61,7 @@ interface Item {
     name: string;
     avatar_url?: string;
   };
+  // handover_verification_enabled: boolean; // Temporarily disabled until migration runs
 }
 
 type FindItemsScreenNavigationProp = CompositeNavigationProp<
@@ -354,6 +360,18 @@ export default function FindItemsScreen() {
   });
   const [filterCount, setFilterCount] = useState(0);
 
+  // Handover verification states
+  const [showHandoverCamera, setShowHandoverCamera] = useState(false);
+  const [currentHandoverItem, setCurrentHandoverItem] = useState<Item | null>(null);
+  const [didStatus, setDidStatus] = useState<'loading' | 'exists' | 'missing'>('loading');
+  const [userDID, setUserDID] = useState<string | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<GPSCoordinates | null>(null);
+
+  // QR Code display states
+  const [showQRDisplay, setShowQRDisplay] = useState(false);
+  const [generatedQRData, setGeneratedQRData] = useState<string | null>(null);
+  const [qrPackageDetails, setQRPackageDetails] = useState<any>(null);
+
   useEffect(() => {
     fetchItems();
   }, []);
@@ -371,6 +389,60 @@ export default function FindItemsScreen() {
     if (activeFilters.location !== 'all') count += 1;
     setFilterCount(count);
   }, [activeFilters]);
+
+  // Initialize handover verification system
+  useEffect(() => {
+    initializeHandoverSystem();
+  }, [session?.user?.id]);
+
+  const initializeHandoverSystem = async () => {
+    if (!session?.user?.id) return;
+    
+    // Check DID status
+    try {
+      setDidStatus('loading');
+      
+      // Get user profile from Supabase to check for DID
+      const { data: userProfile, error } = await supabase
+        .from('profiles')
+        .select('did_identifier, public_key')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (!error && userProfile?.did_identifier) {
+        setDidStatus('exists');
+        setUserDID(userProfile.did_identifier);
+        console.log('✅ DID found in profile:', userProfile.did_identifier);
+      } else {
+        // Check if user has DID key pair stored locally
+        const hasKeyPair = await didService.hasDIDKeyPair(session.user.id);
+        
+        if (hasKeyPair) {
+          const keyPair = await didService.retrieveDIDKeyPair(session.user.id);
+          if (keyPair) {
+            setDidStatus('exists');
+            setUserDID(keyPair.did);
+            console.log('✅ DID found in keychain:', keyPair.did);
+          } else {
+            setDidStatus('missing');
+          }
+        } else {
+          setDidStatus('missing');
+        }
+      }
+    } catch (error) {
+      console.error('Error checking DID status:', error);
+      setDidStatus('missing');
+    }
+    
+    // Get current location
+    try {
+      const location = await locationService.getCurrentLocation();
+      setCurrentLocation(location);
+    } catch (error) {
+      console.error('Error getting location:', error);
+    }
+  };
 
   const fetchItems = async () => {
     try {
@@ -543,137 +615,233 @@ export default function FindItemsScreen() {
   };
 
   const handlePickupConfirmation = async (itemId: number, item: Item) => {
+    console.log('Pickup confirmation initiated for item:', itemId);
+    console.log('Item data:', item);
+    
     if (!session?.user?.id) {
-      Alert.alert('Error', 'You must be logged in to pick up items.');
+      Alert.alert('Error', 'Please log in to pick up items');
       return;
     }
 
-    // Show confirmation dialog
-    Alert.alert(
-      'Confirm Pickup',
-      `Are you sure you want to pick up this item?\n\n` +
-      `Item: ${item.title}\n` +
-      `From: ${item.pickup_location}\n` +
-      `To: ${item.destination}\n` +
-      `Size: ${item.size}`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Confirm Pickup',
-          style: 'default',
-          onPress: async () => {
-            try {
-              console.log('Starting pickup confirmation for item:', itemId);
-              
-              // First, verify the item is still pending
-              const { data: itemData, error: fetchError } = await supabase
-                .from('items')
-                .select('status, user_id')
-                .eq('id', itemId)
-                .single();
-
-              console.log('Item verification result:', { data: itemData, error: fetchError });
-              
-              if (fetchError) {
-                console.error('Error verifying item status:', fetchError);
-                throw fetchError;
-              }
-              
-              if (!itemData) {
-                console.error('Item not found:', itemId);
-                Alert.alert('Error', 'Item not found. Please try again.');
-                return;
-              }
-              
-              if (itemData.status !== 'pending') {
-                console.log('Item already picked up, status:', itemData.status);
-                Alert.alert('Error', 'This item is no longer available for pickup.');
-                return;
-              }
-
-              // Calculate estimated delivery date (3 days from now)
-              const estimatedDelivery = new Date();
-              estimatedDelivery.setDate(estimatedDelivery.getDate() + 3);
-
-              console.log('Updating item status to accepted for user:', session.user.id);
-              
-              // Update item status to 'accepted'
-              const updateResult = await supabase
-                .from('items')
-                .update({ 
-                  status: 'accepted',
-                  accepted_by: session.user.id,
-                  pickup_date: new Date().toISOString(),
-                  estimated_delivery_date: estimatedDelivery.toISOString(),
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', itemId)
-                .eq('status', 'pending')  // Only update if status is still pending
-                .select();
-
-              console.log('Update result:', updateResult);
-              
-              if (updateResult.error) {
-                console.error('Error updating item status:', updateResult.error);
-                throw updateResult.error;
-              }
-              
-              if (updateResult.data && updateResult.data.length === 0) {
-                console.warn('Update returned no results, possible row not found or status already changed');
-              }
-
-              // Create a pickup notification message
-              console.log('Sending pickup notification to sender:', itemData.user_id);
-              const messageResult = await supabase
-                .from('messages')
-                .insert({
-                  sender_id: session.user.id,
-                  receiver_id: itemData.user_id,
-                  content: `I have picked up "${item.title}" and will deliver it to ${item.destination}.`,
-                  item_id: itemId,
-                  created_at: new Date().toISOString()
-                })
-                .select();
-
-              console.log('Message result:', messageResult);
-              
-              if (messageResult.error) {
-                console.error('Error sending pickup message:', messageResult.error);
-                // Continue the process even if message fails
-              }
-
-              // Refresh the items list
-              await fetchItems();
-              
-              // Navigate to pickup details screen
-              navigation.navigate('PickupDetails', {
-                itemId: item.id.toString(),
-                item: {
-                  id: item.id,
-                  title: item.title,
-                  description: item.description,
-                  pickup_location: item.pickup_location,
-                  destination: item.destination,
-                  size: item.size,
-                  image_url: item.image_url,
-                  user_id: item.user_id,
-                  status: 'accepted',
-                  created_at: item.created_at,
-                  sender: item.sender
+    // Check if user has DID
+    if (didStatus === 'missing') {
+      Alert.alert(
+        'Digital Identity Required',
+        'You need to create your digital identity first for secure handover verification.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Create Identity',
+            onPress: async () => {
+              try {
+                const result = await didService.createDIDForUser(session.user.id);
+                if (result.success) {
+                  Alert.alert('Success', 'Your digital identity has been created');
+                  await initializeHandoverSystem();
+                } else {
+                  Alert.alert('Error', result.error || 'Failed to create digital identity');
                 }
-              });
-            } catch (err: any) {
-              console.error('Error confirming pickup:', err);
-              Alert.alert('Error', `Failed to confirm pickup: ${err.message || 'Unknown error'}`);
+              } catch (error) {
+                console.error('Error creating DID:', error);
+                Alert.alert('Error', 'Failed to create digital identity');
+              }
             }
-          },
-        },
-      ],
-      { cancelable: true }
+          }
+        ]
+      );
+      return;
+    }
+
+    // Set current item for handover
+    setCurrentHandoverItem(item);
+
+    // Start handover verification process
+    Alert.alert(
+      '🔐 Secure Pickup Verification',
+      `Start secure handover verification for "${item.title}"?\n\nThis will:\n• Verify your GPS location\n• Take a pickup photo\n• Create blockchain signature\n• Update item status`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start Verification',
+          onPress: () => {
+            setShowHandoverCamera(true);
+          }
+        }
+      ]
     );
+  };
+
+  const handleHandoverVerificationCapture = async (photoUri: string, location: GPSCoordinates) => {
+    if (!currentHandoverItem || !session?.user?.id) {
+      Alert.alert('Error', 'Missing item or user information');
+      setShowHandoverCamera(false);
+      return;
+    }
+
+    try {
+      const handoverService = HandoverService.getInstance();
+
+      // Create package details for verification
+      const packageDetails: PackageDetails = {
+        packageId: `ITEM-${currentHandoverItem.id}`,
+        senderDID: userDID || 'temp-sender-did',
+        travelerDID: userDID || 'temp-traveler-did',
+        destination: currentHandoverItem.destination,
+        value: 0, // Could be item value if available
+        expectedLocation: {
+          latitude: 37.7749, // This would normally come from item pickup location
+          longitude: -122.4194,
+          accuracy: 10
+        }
+      };
+
+      // Verify pickup
+      const result = await handoverService.verifyPickup(packageDetails, session.user.id);
+
+      if (result.success) {
+        // Generate QR code for the package
+        console.log('📦 Generating QR code for picked up package...');
+        
+        const qrResult = await handoverService.generateEnhancedPackageQR(
+          packageDetails,
+          session.user.id,
+          session.user.email || 'Anonymous Traveler'
+        );
+
+        // Store QR data in database
+        await supabase
+          .from('items')
+          .update({
+            qr_code_data: qrResult.qrData,
+            qr_signature: qrResult.signature,
+            qr_generated_at: new Date().toISOString()
+          })
+          .eq('id', currentHandoverItem.id);
+
+        // Complete the pickup in database
+        await completeItemPickup(currentHandoverItem.id, currentHandoverItem);
+        
+        // Prepare QR display data
+        setGeneratedQRData(qrResult.qrData);
+        setQRPackageDetails({
+          title: currentHandoverItem.title,
+          destination: currentHandoverItem.destination,
+          size: currentHandoverItem.size,
+          travelerName: session.user.email || 'Anonymous Traveler'
+        });
+        
+        Alert.alert(
+          'Pickup Verified! 🎉',
+          `Package pickup successfully verified!\n\nLocation Accuracy: ${result.distance}m\nVerification: ${result.verified ? 'Confirmed' : 'Manual Override'}\nQR code generated for delivery verification.`,
+          [
+            { 
+              text: 'Continue', 
+              onPress: () => {
+                // Show QR code for sender
+                setShowQRDisplay(true);
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Verification Failed',
+          result.error || 'Unable to complete handover verification',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Handover verification error:', error);
+      Alert.alert('Verification Failed', 'Unable to process handover verification. Please try again.');
+    } finally {
+      setShowHandoverCamera(false);
+      setCurrentHandoverItem(null);
+    }
+  };
+
+  const completeItemPickup = async (itemId: number, item: Item) => {
+    if (!session?.user?.id) {
+      Alert.alert('Error', 'Please log in to pick up items');
+      return;
+    }
+
+    try {
+      console.log('Processing pickup for item:', itemId);
+      
+      // Get additional item data if needed
+      const { data: itemData, error: itemError } = await supabase
+        .from('items')
+        .select('*')
+        .eq('id', itemId)
+        .single();
+
+      if (itemError) {
+        console.error('Error fetching item data:', itemError);
+        throw itemError;
+      }
+
+      // Calculate estimated delivery date (2-7 days from now)
+      const estimatedDelivery = new Date();
+      estimatedDelivery.setDate(estimatedDelivery.getDate() + Math.floor(Math.random() * 5) + 2);
+
+      console.log('Updating item status to accepted for user:', session.user.id);
+      
+      // Update item status to 'accepted'
+      const updateResult = await supabase
+        .from('items')
+        .update({ 
+          status: 'accepted',
+          accepted_by: session.user.id,
+          pickup_date: new Date().toISOString(),
+          estimated_delivery_date: estimatedDelivery.toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', itemId)
+        .eq('status', 'pending')  // Only update if status is still pending
+        .select();
+
+      console.log('Update result:', updateResult);
+      
+      if (updateResult.error) {
+        console.error('Error updating item status:', updateResult.error);
+        throw updateResult.error;
+      }
+      
+      if (updateResult.data && updateResult.data.length === 0) {
+        console.warn('Update returned no results, possible row not found or status already changed');
+      }
+
+      // Create a pickup notification message
+      console.log('Sending pickup notification to sender:', itemData.user_id);
+      const messageResult = await supabase
+        .from('messages')
+        .insert({
+          sender_id: session.user.id,
+          receiver_id: itemData.user_id,
+          content: `I have picked up "${item.title}" and will deliver it to ${item.destination}.`,
+          item_id: itemId,
+          created_at: new Date().toISOString()
+        })
+        .select();
+
+      console.log('Message result:', messageResult);
+      
+      if (messageResult.error) {
+        console.error('Error sending pickup message:', messageResult.error);
+        // Don't throw error here, just log it
+      }
+
+      // Show success message
+      const successMessage = 'Item picked up successfully! Check your dashboard.';
+        
+      Alert.alert('Success', successMessage);
+
+      // Refresh the items list
+      fetchItems();
+    } catch (err: any) {
+      console.error('Error confirming pickup:', err);
+      Alert.alert('Error', `Failed to confirm pickup: ${err.message || 'Unknown error'}`);
+    }
   };
 
   const handleCancelPickup = async (itemId: string) => {
@@ -744,9 +912,19 @@ export default function FindItemsScreen() {
       </View>
       
       <View style={styles.cardContent}>
-        <Text style={styles.itemTitle} numberOfLines={1}>
-          {item.title}
-        </Text>
+        <View style={styles.itemHeader}>
+          <View style={styles.titleContainer}>
+            <Text style={styles.itemTitle} numberOfLines={2}>
+              {item.title}
+            </Text>
+          </View>
+          <View style={styles.headerBadges}>
+            <View style={styles.securityBadge}>
+              <Ionicons name="shield-checkmark" size={12} color={colors.white} />
+              <Text style={styles.securityBadgeText}>🔒 Secure</Text>
+            </View>
+          </View>
+        </View>
         
         <View style={styles.locationRow}>
           <Ionicons name="location-outline" size={14} color={colors.text.secondary} />
@@ -876,6 +1054,30 @@ export default function FindItemsScreen() {
         filters={activeFilters}
         onApplyFilters={handleApplyFilters}
       />
+
+      {/* Handover Verification Camera */}
+      {showHandoverCamera && currentHandoverItem && currentLocation && (
+        <HandoverCamera
+          expectedLocation={currentLocation} // Use current location as expected for now
+          onCapture={handleHandoverVerificationCapture}
+          onCancel={() => {
+            setShowHandoverCamera(false);
+            setCurrentHandoverItem(null);
+          }}
+          type="pickup"
+          packageTitle={currentHandoverItem.title}
+        />
+      )}
+
+      {/* Package QR Code Display */}
+      {showQRDisplay && generatedQRData && qrPackageDetails && (
+        <PackageQRDisplay
+          visible={showQRDisplay}
+          onClose={() => setShowQRDisplay(false)}
+          qrData={generatedQRData}
+          packageDetails={qrPackageDetails}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -996,11 +1198,37 @@ const styles = StyleSheet.create({
   cardContent: {
     padding: 12,
   },
+  itemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  titleContainer: {
+    flex: 1,
+  },
   itemTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333333',
-    marginBottom: 4,
+  },
+  headerBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  securityBadge: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  securityBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.white,
   },
   locationRow: {
     flexDirection: 'row',

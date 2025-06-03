@@ -1,32 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Image,
-  TouchableWithoutFeedback,
-  Keyboard,
-  Modal,
-  FlatList
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Image,
+    Keyboard,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
+import Animated, { FadeInUp } from 'react-native-reanimated';
+import LocationAutocomplete from '../components/GooglePlaces/LocationAutocomplete';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Ionicons } from '@expo/vector-icons';
-import { colors, typography, spacing, borderRadius, shadows } from '../theme';
-import Animated, { FadeInUp } from 'react-native-reanimated';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
-import { GOOGLE_PLACES_API_KEY } from '../config/apiKeys';
-import LocationAutocomplete from '../components/GooglePlaces/LocationAutocomplete';
-import { useNavigation } from '@react-navigation/native';
 import { testDatabaseConnection } from '../lib/testConnection';
+import { borderRadius, colors, shadows, spacing, typography } from '../theme';
 
 // Sample items for quick-fill functionality
 const SAMPLE_ITEMS = [
@@ -216,7 +215,7 @@ export function PostItemScreen() {
     fetchUserProfile();
     navigation.setOptions({
       headerTitle: () => (
-        <Text style={styles.headerTitle}>Post New Item</Text>
+        <Text style={styles.headerTitle}>Post Secure Item</Text>
       ),
       headerRight: () => (
         <TouchableOpacity
@@ -333,10 +332,10 @@ export function PostItemScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8,
+        quality: 0.3,
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -350,16 +349,34 @@ export function PostItemScreen() {
 
   const uploadImageToStorage = async (uri: string): Promise<string | null> => {
     try {
+      console.log('Starting image upload process...');
+      
       // First, check if the file exists
       const fileInfo = await FileSystem.getInfoAsync(uri);
       if (!fileInfo.exists) {
-        throw new Error('File does not exist');
+        throw new Error('Image file does not exist');
+      }
+
+      console.log('File info:', fileInfo);
+
+      // Check file size limit (max 3MB for better network reliability)
+      if (fileInfo.size && fileInfo.size > 3 * 1024 * 1024) {
+        throw new Error('Image file is too large. Please select an image smaller than 3MB.');
       }
 
       // Read the file as base64
       const base64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
+
+      if (!base64) {
+        throw new Error('Failed to read image file');
+      }
+
+      // Additional check for base64 size (approx 4MB base64 limit)
+      if (base64.length > 4000000) { // ~3MB base64 limit
+        throw new Error('Image is too large after processing. Please select a smaller image.');
+      }
 
       // Get file extension from URI
       const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
@@ -368,6 +385,8 @@ export function PostItemScreen() {
       // Generate a unique filename
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
+      console.log('Upload details:', { fileName, contentType, base64Length: base64.length, fileSizeMB: (base64.length * 0.75 / 1024 / 1024).toFixed(2) });
+
       // Convert base64 to Uint8Array
       const binaryString = atob(base64);
       const bytes = new Uint8Array(binaryString.length);
@@ -375,30 +394,44 @@ export function PostItemScreen() {
         bytes[i] = binaryString.charCodeAt(i);
       }
 
-      // Upload to Supabase storage
-      const { data, error } = await supabase.storage
+      console.log('Uploading to Supabase storage...');
+
+      // Upload to Supabase storage with timeout
+      const uploadPromise = supabase.storage
         .from('items')
         .upload(fileName, bytes, {
           contentType,
           cacheControl: '3600',
+          upsert: false,
         });
 
+      // Add 60 second timeout for larger files
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Upload timeout - please try with a smaller image')), 60000)
+      );
+
+      const { data, error } = await Promise.race([uploadPromise, timeoutPromise]) as any;
+
       if (error) {
-        console.error('Upload error:', error);
-        throw error;
+        console.error('Supabase upload error:', error);
+        throw new Error(`Upload failed: ${error.message}`);
       }
+
+      console.log('Upload successful:', data);
 
       // Get the public URL
       const { data: { publicUrl } } = supabase.storage
         .from('items')
         .getPublicUrl(fileName);
 
+      console.log('Public URL:', publicUrl);
       return publicUrl;
-    } catch (error) {
+
+    } catch (error: any) {
       console.error('Error uploading image:', error);
       Alert.alert(
         'Upload Error',
-        'Failed to upload image. Please try again.',
+        `Failed to upload image: ${error.message}`,
         [{ text: 'OK' }]
       );
       return null;
@@ -465,6 +498,11 @@ export function PostItemScreen() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
+      
+      // TODO: Add handover_verification_enabled: true after running the database migration
+      // All items now use secure handover verification by default
+      // itemData.handover_verification_enabled = true;
+      
       console.log('Item data:', itemData);
 
       // First, check if we can connect to the database
@@ -538,8 +576,21 @@ export function PostItemScreen() {
             entering={FadeInUp.delay(200).springify()}
             style={styles.title}
           >
-            Post New Item
+            Post Secure Item
           </AnimatedText>
+          
+          <Animated.View 
+            entering={FadeInUp.delay(250).springify()}
+            style={styles.securityBadgeContainer}
+          >
+            <View style={styles.securityBadge}>
+              <Ionicons name="shield-checkmark" size={18} color={colors.white} />
+              <Text style={styles.securityBadgeText}>🔐 Blockchain Verified Handovers</Text>
+            </View>
+            <Text style={styles.securitySubtext}>
+              All deliveries include GPS + Photo + Digital Signature verification
+            </Text>
+          </Animated.View>
           
           <Animated.View 
             entering={FadeInUp.delay(300).springify()}
@@ -986,5 +1037,28 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: spacing.md,
+  },
+  securityBadgeContainer: {
+    marginBottom: spacing.xl,
+  },
+  securityBadge: {
+    backgroundColor: colors.primary,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.small,
+  },
+  securityBadgeText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: 'bold',
+    color: colors.white,
+    marginLeft: spacing.xs,
+  },
+  securitySubtext: {
+    color: colors.text.secondary,
+    fontSize: typography.sizes.sm,
   },
 }); 

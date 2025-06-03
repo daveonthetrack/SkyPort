@@ -1,12 +1,12 @@
-import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import PhoneVerificationScreen from '../screens/PhoneVerificationScreen';
+import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import SignInScreen from '../screens/SignInScreen';
 import SignUpScreen from '../screens/SignUpScreen';
-import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import { TabNavigator } from './TabNavigator';
 import { RootStackParamList } from './types';
-import PhoneVerificationScreen from '../screens/PhoneVerificationScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 

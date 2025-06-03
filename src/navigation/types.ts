@@ -25,7 +25,9 @@ export type RootStackParamList = {
     destination?: string;
   };
   MyTrips: undefined;
-  PostTrip: undefined;
+  PostTrip: {
+    editTrip?: Trip;
+  } | undefined;
   FindItems: {
     tripId?: number;
     origin?: string;
@@ -56,7 +58,9 @@ export type MessagesStackParamList = {
 
 export type HomeStackParamList = {
   Dashboard: undefined;
-  PostTrip: undefined;
+  PostTrip: {
+    editTrip?: Trip;
+  } | undefined;
   MyTrips: undefined;
   FindItems: {
     tripId?: number;
@@ -98,6 +102,8 @@ export type HomeStackParamList = {
   Home: undefined;
   Profile: undefined;
   DeliveredItems: undefined;
+  Settings: undefined;
+  HelpSupport: undefined;
 };
 
 export type RootStackScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<
