@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { didService } from './DIDService';
-import { GPSCoordinates, locationService } from './LocationService';
+import { GPSCoordinates, LocationService } from './LocationService';
 
 export interface PackageDetails {
   packageId: string;
@@ -182,13 +182,13 @@ export class HandoverService {
       }
 
       // Step 2: Get current location
-      const currentLocation = await locationService.getCurrentLocation();
+      const currentLocation = await LocationService.getInstance().getCurrentLocation();
       if (!currentLocation) {
         return { success: false, verified: false, distance: -1, error: 'Location required' };
       }
 
       // Step 3: Verify location proximity
-      const distance = locationService.calculateDistance(
+      const distance = LocationService.getInstance().calculateDistance(
         packageDetails.expectedLocation,
         currentLocation
       );
@@ -271,12 +271,12 @@ export class HandoverService {
       console.log('📦 Starting delivery verification...');
 
       // Step 1: Verify location first (like bike return)
-      const locationResult = await locationService.verifyHandoverLocation(
+      const locationResult = await LocationService.getInstance().verifyHandoverLocation(
         packageDetails.expectedLocation
       );
 
       if (!locationResult.verified) {
-        const distanceMsg = locationService.formatDistance(locationResult.distance);
+        const distanceMsg = LocationService.getInstance().formatDistance(locationResult.distance);
         Alert.alert(
           'Location Required',
           `Please get within 50m of the delivery location. You are currently ${distanceMsg} away.`,

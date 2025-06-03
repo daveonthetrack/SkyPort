@@ -24,7 +24,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { didService } from '../services/DIDService';
 import { HandoverService, PackageDetails } from '../services/HandoverService';
-import { GPSCoordinates, locationService } from '../services/LocationService';
+import { GPSCoordinates, LocationService } from '../services/LocationService';
 import { borderRadius, colors, shadows, spacing, typography } from '../theme';
 
 const { width } = Dimensions.get('window');
@@ -128,7 +128,7 @@ export default function TravelerItemDetailsScreen() {
     
     // Get current location
     try {
-      const location = await locationService.getCurrentLocation();
+      const location = await LocationService.getInstance().getCurrentLocation();
       setCurrentLocation(location);
     } catch (error) {
       console.error('Error getting location:', error);

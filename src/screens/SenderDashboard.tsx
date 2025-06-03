@@ -300,56 +300,80 @@ const SenderDashboard = ({ navigation, route }: Props) => {
     const setupRealtimeSubscriptions = () => {
       console.log('Setting up realtime subscriptions for sender dashboard...');
       
-      // Subscribe to items table changes
-      const itemsChannel = supabase
-        .channel('sender-dashboard-items')
-        .on('postgres_changes', {
-          event: '*',
-          schema: 'public',
-          table: 'items',
-          filter: `user_id=eq.${session.user.id}`
-        }, () => {
-          console.log('Items table changed, refreshing sender stats...');
-          fetchDashboardStats();
-          fetchRecentActivity();
-        })
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            console.log('✅ Sender items subscription connected successfully');
-          } else if (status === 'CHANNEL_ERROR') {
-            console.log('⚠️ Sender items subscription error - continuing with polling fallback');
-          } else {
-            console.log('Sender items subscription status:', status);
-          }
-        });
+      let itemsRetryCount = 0;
+      let messagesRetryCount = 0;
+      const maxRetries = 5;
+      const baseDelay = 2000; // 2 seconds
       
-      // Subscribe to messages table changes for updates to activity
-      const messagesChannel = supabase
-        .channel('sender-dashboard-messages')
-        .on('postgres_changes', {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `receiver_id=eq.${session.user.id}`
-        }, () => {
-          console.log('New messages received, refreshing activity...');
-          fetchRecentActivity();
-        })
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            console.log('✅ Sender messages subscription connected successfully');
-          } else if (status === 'CHANNEL_ERROR') {
-            console.log('⚠️ Sender messages subscription error - continuing with polling fallback');
-          } else {
-            console.log('Sender messages subscription status:', status);
-          }
-        });
-      
-      // Return cleanup function
+      const createItemsSubscription = () => {
+        const itemsChannel = supabase
+          .channel('sender-dashboard-items')
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'items',
+            filter: `user_id=eq.${session.user.id}`
+          }, () => {
+            console.log('Items table changed, refreshing sender stats...');
+            fetchDashboardStats();
+            fetchRecentActivity();
+          })
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              console.log('✅ Sender items subscription connected successfully');
+              itemsRetryCount = 0; // Reset retry count on success
+            } else if (status === 'CHANNEL_ERROR') {
+              if (itemsRetryCount < maxRetries) {
+                itemsRetryCount++;
+                const delay = baseDelay * Math.pow(2, itemsRetryCount - 1); // Exponential backoff
+                console.log(`⚠️ Sender items subscription error - retrying in ${delay/1000}s (attempt ${itemsRetryCount}/${maxRetries})`);
+                setTimeout(createItemsSubscription, delay);
+              } else {
+                console.log('⚠️ Sender items subscription failed after max retries - using polling fallback');
+              }
+            }
+          });
+        return itemsChannel;
+      };
+
+      const createMessagesSubscription = () => {
+        const messagesChannel = supabase
+          .channel('sender-dashboard-messages')
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'messages',
+            filter: `or(sender_id.eq.${session.user.id},receiver_id.eq.${session.user.id})`
+          }, () => {
+            console.log('Messages table changed, refreshing sender stats...');
+            fetchDashboardStats();
+            fetchRecentActivity();
+          })
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              console.log('✅ Sender messages subscription connected successfully');
+              messagesRetryCount = 0; // Reset retry count on success
+            } else if (status === 'CHANNEL_ERROR') {
+              if (messagesRetryCount < maxRetries) {
+                messagesRetryCount++;
+                const delay = baseDelay * Math.pow(2, messagesRetryCount - 1); // Exponential backoff
+                console.log(`⚠️ Sender messages subscription error - retrying in ${delay/1000}s (attempt ${messagesRetryCount}/${maxRetries})`);
+                setTimeout(createMessagesSubscription, delay);
+              } else {
+                console.log('⚠️ Sender messages subscription failed after max retries - using polling fallback');
+              }
+            }
+          });
+        return messagesChannel;
+      };
+
+      // Create initial subscriptions
+      const itemsSubscription = createItemsSubscription();
+      const messagesSubscription = createMessagesSubscription();
+
       return () => {
-        console.log('Cleaning up sender realtime subscriptions...');
-        supabase.removeChannel(itemsChannel);
-        supabase.removeChannel(messagesChannel);
+        itemsSubscription?.unsubscribe();
+        messagesSubscription?.unsubscribe();
       };
     };
     

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -12,7 +12,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { GPSCoordinates, locationService } from '../services/LocationService';
+import { GPSCoordinates, LocationService } from '../services/LocationService';
 import { borderRadius, colors, shadows, spacing } from '../theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -39,6 +39,8 @@ export const HandoverCamera: React.FC<HandoverCameraProps> = ({
   const [isWithinRange, setIsWithinRange] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [locationAccuracy, setLocationAccuracy] = useState<string>('Getting location...');
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   
   const cameraRef = useRef<CameraView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -55,22 +57,21 @@ export const HandoverCamera: React.FC<HandoverCameraProps> = ({
   }, [permission]);
 
   useEffect(() => {
-    getCurrentLocation();
     startLocationTracking();
     
     return () => {
-      locationService.stopTracking();
+      LocationService.getInstance().stopTracking();
     };
   }, []);
 
   useEffect(() => {
     if (currentLocation) {
-      const newDistance = locationService.calculateDistance(expectedLocation, currentLocation);
+      const newDistance = LocationService.getInstance().calculateDistance(expectedLocation, currentLocation);
       setDistance(newDistance);
       setIsWithinRange(newDistance <= 50);
       
       // Update location accuracy display
-      const accuracyStatus = locationService.getAccuracyStatus(currentLocation.accuracy || null);
+      const accuracyStatus = LocationService.getInstance().getAccuracyStatus(currentLocation.accuracy || null);
       setLocationAccuracy(accuracyStatus.description);
     }
   }, [currentLocation, expectedLocation]);
@@ -95,18 +96,40 @@ export const HandoverCamera: React.FC<HandoverCameraProps> = ({
     pulseAnimation();
   }, []);
 
-  const getCurrentLocation = async () => {
-    const location = await locationService.getCurrentLocation();
-    if (location) {
-      setCurrentLocation(location);
+  const checkDistance = useCallback((currentLocation: GPSCoordinates) => {
+    if (expectedLocation) {
+      const newDistance = LocationService.getInstance().calculateDistance(expectedLocation, currentLocation);
+      setDistance(newDistance);
+      
+      // Update accuracy status
+      const accuracyStatus = LocationService.getInstance().getAccuracyStatus(currentLocation.accuracy || null);
+      setLocationAccuracy(accuracyStatus.description);
     }
-  };
+  }, [expectedLocation]);
 
-  const startLocationTracking = () => {
-    locationService.startTracking((location) => {
-      setCurrentLocation(location);
-    });
-  };
+  const startLocationTracking = useCallback(async () => {
+    try {
+      setLocationLoading(true);
+      
+      // Get initial location
+      const location = await LocationService.getInstance().getCurrentLocation();
+      if (location) {
+        setCurrentLocation(location);
+        checkDistance(location);
+      }
+      
+      // Start continuous tracking for real-time updates
+      LocationService.getInstance().startTracking((location: GPSCoordinates) => {
+        setCurrentLocation(location);
+        checkDistance(location);
+      });
+    } catch (error) {
+      console.error('Error getting location:', error);
+      setLocationError('Failed to get location. Please enable GPS.');
+    } finally {
+      setLocationLoading(false);
+    }
+  }, [checkDistance]);
 
   const takePicture = async () => {
     if (!cameraRef.current || !cameraReady || capturing) return;
@@ -137,7 +160,7 @@ export const HandoverCamera: React.FC<HandoverCameraProps> = ({
   };
 
   const formatDistance = (meters: number): string => {
-    return locationService.formatDistance(meters);
+    return LocationService.getInstance().formatDistance(meters);
   };
 
   const getLocationStatusColor = (): string => {

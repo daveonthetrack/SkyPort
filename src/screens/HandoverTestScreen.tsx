@@ -16,7 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { didService } from '../services/DIDService';
 import { HandoverService, PackageDetails } from '../services/HandoverService';
-import { GPSCoordinates, locationService } from '../services/LocationService';
+import { GPSCoordinates, LocationService } from '../services/LocationService';
 import { borderRadius, colors, shadows, spacing } from '../theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -94,7 +94,7 @@ export const HandoverTestScreen: React.FC = () => {
   };
 
   const getCurrentLocation = async () => {
-    const location = await locationService.getCurrentLocation();
+    const location = await LocationService.getInstance().getCurrentLocation();
     setCurrentLocation(location);
   };
 

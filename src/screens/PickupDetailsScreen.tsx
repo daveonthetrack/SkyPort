@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { CommonActions, CompositeNavigationProp, RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -133,14 +133,22 @@ export default function PickupDetailsScreen() {
   }, []);
 
   // Also fetch item status whenever the screen comes into focus
+  const lastStatusFetch = useRef<number | null>(null);
   useFocusEffect(
     useCallback(() => {
       console.log('PickupDetailsScreen focused - fetching latest item status');
-      fetchItemStatus();
+      
+      // Only fetch if we don't have recent data (within last 30 seconds)
+      const lastFetch = Date.now() - (lastStatusFetch.current || 0);
+      if (lastFetch > 30000) { // 30 seconds throttle
+        fetchItemStatus();
+        lastStatusFetch.current = Date.now();
+      }
+      
       return () => {
         // cleanup if needed
       };
-    }, [itemId])
+    }, []) // Remove itemId from dependencies to prevent excessive calls
   );
 
   // Initialize handover verification system
